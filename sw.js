@@ -1,4 +1,4 @@
-const CACHE = 'lexi-spend-v29';
+const CACHE = 'lexi-spend-v30';
 const SHELL = [
   './',
   './index.html',
@@ -25,10 +25,10 @@ const SHELL = [
 
 const UI_PATCH = String.raw`
 ;(() => {
-  if (document.getElementById('lexiSpendUiRefineV29')) return;
+  if (document.getElementById('lexiSpendUiRefineV30')) return;
 
   const style = document.createElement('style');
-  style.id = 'lexiSpendUiRefineV29';
+  style.id = 'lexiSpendUiRefineV30';
   style.textContent = [
     'html, body { width:100% !important; max-width:100% !important; overflow-x:hidden !important; }',
     '.app { width:100% !important; max-width:600px !important; margin-left:auto !important; margin-right:auto !important; overflow-x:hidden !important; }',
@@ -36,10 +36,14 @@ const UI_PATCH = String.raw`
     '.titleLine { width:100% !important; }',
     '.lexi-header-left { flex:0 0 auto !important; margin-right:4px !important; }',
     '.lexi-header-left .gear { flex:0 0 25px !important; width:25px !important; height:25px !important; min-width:25px !important; min-height:25px !important; margin:0 !important; }',
-    '.lexi-header-converter { margin-left:auto !important; margin-right:0 !important; flex:0 0 auto !important; justify-content:flex-end !important; }',
+    '.lexi-header-converter { margin-left:auto !important; margin-right:0 !important; flex:0 0 auto !important; justify-content:flex-end !important; gap:2px !important; }',
     '.lexi-converter-symbol { font-size:14px !important; }',
     '.lexi-converter-input { width:88px !important; }',
-    '.lexi-converter-output { min-width:64px !important; font-size:14px !important; line-height:1 !important; }',
+    '.lexi-converter-output { min-width:52px !important; font-size:14px !important; line-height:1 !important; text-align:left !important; }',
+    '.lexi-cash-card .cashCurrencyField { flex:0 0 140px !important; width:140px !important; }',
+    '.lexi-cash-card #addCashBtn { min-width:180px !important; width:180px !important; }',
+    '.lexi-entry-card #merchant::placeholder { font-size:13px !important; }',
+    '.lexi-entry-card .usdPreview:empty { display:none !important; min-height:0 !important; margin-top:0 !important; }',
     'body[data-lexi-view="notes"] .lexi-notes-page { flex:0 0 auto !important; width:calc(100% - 16px) !important; max-width:calc(100% - 16px) !important; min-width:0 !important; align-self:center !important; margin:4px auto 0 !important; padding:0 0 4px !important; overflow:hidden !important; }',
     '.lexi-notes-view, .lexi-notes-editor { flex:0 0 auto !important; width:100% !important; height:min(52dvh, 480px) !important; max-height:min(52dvh, 480px) !important; overflow-x:hidden !important; overflow-y:auto !important; scrollbar-width:none !important; }',
     '.lexi-notes-editor { font-size:16px !important; line-height:1.3 !important; }',
@@ -56,7 +60,7 @@ const UI_PATCH = String.raw`
     '.lexi-notes-check-label { min-width:0 !important; line-height:1.38 !important; white-space:pre-wrap !important; overflow-wrap:anywhere !important; }',
     '.lexi-notes-check-row input[type="checkbox"]:checked + .lexi-notes-check-label { text-decoration:line-through; opacity:.58; }',
     '.lexi-notes-check-indent { display:none !important; }',
-    '@media (max-width:370px) { .lexi-converter-input { width:78px !important; } .lexi-converter-output { min-width:56px !important; font-size:13px !important; } }'
+    '@media (max-width:370px) { .lexi-converter-input { width:78px !important; } .lexi-converter-output { min-width:48px !important; font-size:13px !important; } .lexi-cash-card .cashCurrencyField { flex-basis:132px !important; width:132px !important; } .lexi-cash-card #addCashBtn { min-width:170px !important; width:170px !important; } }'
   ].join('\n');
   document.head.appendChild(style);
 
@@ -65,6 +69,20 @@ const UI_PATCH = String.raw`
     const left = titleLine?.querySelector('.lexi-header-left');
     const gear = document.querySelector('.gear');
     if (left && gear && gear.parentElement !== left) left.appendChild(gear);
+  }
+
+  function refineSpendPreview() {
+    const preview = document.getElementById('usdPreview');
+    if (!preview) return;
+    const text = String(preview.textContent || '').trim().replace(/\s+/g, ' ').toLowerCase();
+    if (
+      text === 'enter an amount to preview estimated usd.' ||
+      text === 'enter an amount to preview estimated usd' ||
+      text === 'enter an amount to preview usd.' ||
+      text === 'enter an amount to preview usd'
+    ) {
+      preview.textContent = '';
+    }
   }
 
   function notesParts() {
@@ -267,6 +285,7 @@ const UI_PATCH = String.raw`
 
   const run = () => {
     fixHeader();
+    refineSpendPreview();
     setupNotes();
   };
 
@@ -283,6 +302,7 @@ const UI_PATCH = String.raw`
     requestAnimationFrame(() => {
       queued = false;
       fixHeader();
+      refineSpendPreview();
       if (!document.querySelector('.lexi-notes-mode-btn')) setupNotes();
     });
   });
