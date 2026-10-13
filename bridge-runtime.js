@@ -1,6 +1,7 @@
 (() => {
   'use strict';
   const B = window.LexiSpendBridge;
+
   window.addEventListener('message', event => {
     const d = event.data || {};
     if (d.type === 'lexi-spend-bridge-ready') {
@@ -22,15 +23,30 @@
     B.pending.delete(id);
     d.ok ? q.resolve(d.result) : q.reject(new Error(d.error || 'Lexi Spend backend call failed.'));
   });
+
   window.google = window.google || {};
   window.google.script = window.google.script || {};
   Object.defineProperty(window.google.script, 'run', {
     configurable: true,
     get() { return B.runner(); }
   });
+
   window.LexiSpendApi = {
     clearAuthorization() { B.clearCode(); B.showGate(); },
     reconnect() { B.clearCode(); return B.ensureCode(); }
   };
+
   window.addEventListener('DOMContentLoaded', () => B.ensureFrame());
+
+  window.addEventListener('pageshow', event => {
+    if (!event.persisted) return;
+    try { B.recreateFrame(); } catch (_) {}
+  });
+
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState !== 'visible') return;
+    if (!B.ready && B.frame) {
+      try { B.recreateFrame(); } catch (_) {}
+    }
+  });
 })();
