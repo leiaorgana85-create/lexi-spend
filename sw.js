@@ -1,4 +1,4 @@
-const CACHE = 'lexi-spend-v12';
+const CACHE = 'lexi-spend-v13';
 const SHELL = [
   './',
   './index.html',
