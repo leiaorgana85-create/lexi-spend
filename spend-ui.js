@@ -1,8 +1,9 @@
 (() => {
   'use strict';
 
-  const VIEW_KEY = 'lexiSpendActiveViewV1';
+  const VIEW_KEY = 'lexiSpendActiveViewV2';
   const NOTES_KEY = 'lexiSpendGeneralNotesV1';
+  const VALID_VIEWS = ['spend', 'stay', 'cash', 'notes'];
 
   const $ = id => document.getElementById(id);
 
@@ -14,7 +15,7 @@
     parent.insertBefore(title, parent.firstChild);
   }
 
-  function buildNotesPage(pagerShell) {
+  function buildNotesPage(anchor) {
     if (document.getElementById('lexiNotesPage')) return document.getElementById('lexiNotesPage');
 
     const section = document.createElement('section');
@@ -35,7 +36,7 @@
       <textarea id="lexiNotesEditor" class="lexi-notes-editor" spellcheck="true" placeholder="Write anything here — spending reminders, uncategorized items, app notes, trip expenses…"></textarea>
       <div class="lexi-notes-help">Saved automatically on this device.</div>`;
 
-    pagerShell.insertAdjacentElement('afterend', section);
+    anchor.insertAdjacentElement('afterend', section);
 
     const editor = section.querySelector('#lexiNotesEditor');
     const status = section.querySelector('#lexiNotesStatus');
@@ -111,26 +112,48 @@
     return section;
   }
 
-  function buildNotesDot(pageNav) {
-    let dot = document.getElementById('dotNotes');
-    if (dot) return dot;
+  function buildStayPage(pagerShell, stayMini, summaryCard) {
+    let section = document.getElementById('lexiStayPage');
+    if (section) return section;
 
-    dot = document.createElement('span');
-    dot.id = 'dotNotes';
-    dot.className = 'dot';
-    dot.setAttribute('role', 'button');
-    dot.setAttribute('tabindex', '0');
-    dot.setAttribute('aria-label', 'Notes');
-    pageNav.appendChild(dot);
-    return dot;
+    section = document.createElement('section');
+    section.id = 'lexiStayPage';
+    section.className = 'lexi-stay-page';
+    section.setAttribute('aria-label', 'This Stay');
+
+    const scroll = document.createElement('div');
+    scroll.className = 'lexi-stay-scroll';
+    section.appendChild(scroll);
+
+    if (stayMini) scroll.appendChild(stayMini);
+    if (summaryCard) scroll.appendChild(summaryCard);
+
+    pagerShell.insertAdjacentElement('afterend', section);
+    return section;
+  }
+
+  function buildTabbar() {
+    let nav = document.getElementById('lexiTabbar');
+    if (nav) return nav;
+
+    nav = document.createElement('nav');
+    nav.id = 'lexiTabbar';
+    nav.className = 'lexi-tabbar';
+    nav.setAttribute('aria-label', 'Primary');
+    nav.innerHTML = `
+      <button class="lexi-tab active" type="button" data-lexi-view="spend">Spend</button>
+      <button class="lexi-tab" type="button" data-lexi-view="stay">Stay</button>
+      <button class="lexi-tab" type="button" data-lexi-view="cash">ATM</button>
+      <button class="lexi-tab" type="button" data-lexi-view="notes">Notes</button>`;
+    document.body.appendChild(nav);
+    return nav;
   }
 
   function init() {
     const pagerShell = $('pagerShell');
-    const pageNav = document.querySelector('.pageNav');
     const dotSpend = $('dotSpend');
     const dotCash = $('dotCash');
-    if (!pagerShell || !pageNav || !dotSpend || !dotCash) return;
+    if (!pagerShell || !dotSpend || !dotCash) return;
 
     const title = document.querySelector('.titleLine h1');
     if (title) {
@@ -161,111 +184,59 @@
       if (titleRow && balance) titleRow.insertAdjacentElement('afterend', balance);
     }
 
-    const notesPage = buildNotesPage(pagerShell);
-    const dotNotes = buildNotesDot(pageNav);
+    const stayMini = $('stayMini');
+    buildStayPage(pagerShell, stayMini, summaryCard);
+    buildNotesPage($('lexiStayPage'));
+
+    const tabbar = buildTabbar();
+    const tabs = Array.from(tabbar.querySelectorAll('[data-lexi-view]'));
+
+    // The original app still owns a Spend/Cash swipe handler. Keep touch
+    // events available to form controls, but immediately restore the tab the
+    // user selected if an incidental horizontal gesture tries to change it.
+    pagerShell.addEventListener('touchend', () => {
+      const lockedView = document.body.dataset.lexiView;
+      if (lockedView === 'spend' && dotCash.classList.contains('active')) {
+        dotSpend.click();
+      } else if (lockedView === 'cash' && dotSpend.classList.contains('active')) {
+        dotCash.click();
+      }
+    }, { passive: true });
 
     function persistView(view) {
       try { localStorage.setItem(VIEW_KEY, view); } catch (_) {}
     }
 
-    function setViewState(view) {
-      const safeView = ['spend', 'cash', 'notes'].includes(view) ? view : 'spend';
-      document.body.dataset.lexiView = safeView;
-      dotNotes.classList.toggle('active', safeView === 'notes');
-      dotNotes.setAttribute('aria-current', safeView === 'notes' ? 'page' : 'false');
-      persistView(safeView);
+    function updateTabs(view) {
+      tabs.forEach(tab => {
+        const active = tab.dataset.lexiView === view;
+        tab.classList.toggle('active', active);
+        tab.setAttribute('aria-current', active ? 'page' : 'false');
+      });
     }
 
-    function showView(view) {
-      if (view === 'notes') {
-        document.body.dataset.lexiView = 'notes';
-        dotSpend.classList.remove('active');
-        dotCash.classList.remove('active');
-        dotNotes.classList.add('active');
-        dotNotes.setAttribute('aria-current', 'page');
-        persistView('notes');
-        return;
-      }
+    function showView(requestedView) {
+      const view = VALID_VIEWS.includes(requestedView) ? requestedView : 'spend';
 
-      dotNotes.classList.remove('active');
-      dotNotes.setAttribute('aria-current', 'false');
-
-      if (view === 'cash') {
-        document.body.dataset.lexiView = 'cash';
+      if (view === 'spend') {
+        dotSpend.click();
+      } else if (view === 'cash') {
         dotCash.click();
-        setViewState('cash');
-        return;
       }
 
-      document.body.dataset.lexiView = 'spend';
-      dotSpend.click();
-      setViewState('spend');
+      document.body.dataset.lexiView = view;
+      updateTabs(view);
+      persistView(view);
     }
 
-    dotSpend.addEventListener('click', () => setViewState('spend'));
-    dotCash.addEventListener('click', () => setViewState('cash'));
-    dotNotes.addEventListener('click', () => showView('notes'));
-    dotNotes.addEventListener('keydown', event => {
-      if (event.key === 'Enter' || event.key === ' ') {
-        event.preventDefault();
-        showView('notes');
-      }
+    tabs.forEach(tab => {
+      tab.addEventListener('click', () => showView(tab.dataset.lexiView));
     });
-
-    const pagerObserver = new MutationObserver(() => {
-      if (document.body.dataset.lexiView === 'notes') return;
-      setViewState(dotCash.classList.contains('active') ? 'cash' : 'spend');
-    });
-    pagerObserver.observe(dotSpend, { attributes: true, attributeFilter: ['class'] });
-    pagerObserver.observe(dotCash, { attributes: true, attributeFilter: ['class'] });
-
-    let swipeStartX = null;
-    let swipeStartY = null;
-    let swipeStartView = 'spend';
-
-    function onTouchStart(event) {
-      const touch = event.changedTouches?.[0];
-      if (!touch) return;
-      swipeStartX = touch.clientX;
-      swipeStartY = touch.clientY;
-      // Capture the page at gesture start. The original Spend/Cash pager
-      // also handles this same touchend, so reading the view afterward can
-      // see Cash even when the gesture actually began on Spend.
-      swipeStartView = document.body.dataset.lexiView || 'spend';
-    }
-
-    function onTouchEnd(event) {
-      if (swipeStartX === null || swipeStartY === null) return;
-      const touch = event.changedTouches?.[0];
-      if (!touch) return;
-
-      const dx = touch.clientX - swipeStartX;
-      const dy = touch.clientY - swipeStartY;
-      const startView = swipeStartView;
-      swipeStartX = null;
-      swipeStartY = null;
-      swipeStartView = 'spend';
-
-      if (Math.abs(dx) < 55 || Math.abs(dx) <= Math.abs(dy)) return;
-
-      // Spend <-> Cash remains owned by the original pager. This handler
-      // only extends the sequence at the Cash <-> Notes boundary.
-      if (startView === 'cash' && dx < 0) {
-        showView('notes');
-      } else if (startView === 'notes' && dx > 0) {
-        showView('cash');
-      }
-    }
-
-    pagerShell.addEventListener('touchstart', onTouchStart, { passive: true });
-    pagerShell.addEventListener('touchend', onTouchEnd, { passive: true });
-    notesPage.addEventListener('touchstart', onTouchStart, { passive: true });
-    notesPage.addEventListener('touchend', onTouchEnd, { passive: true });
 
     let initialView = 'spend';
     try {
       const saved = localStorage.getItem(VIEW_KEY);
-      if (['spend', 'cash', 'notes'].includes(saved)) initialView = saved;
+      if (VALID_VIEWS.includes(saved)) initialView = saved;
     } catch (_) {}
 
     showView(initialView);
