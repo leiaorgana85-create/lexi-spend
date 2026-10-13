@@ -279,12 +279,178 @@
     if (cashPage) cashPage.style.setProperty('display', view === 'cash' ? 'block' : 'none', 'important');
   }
 
+  function buildHeaderConverter() {
+    const titleLine = document.querySelector('.titleLine');
+    const title = titleLine?.querySelector('h1');
+    if (!titleLine || !title || document.getElementById('lexiHeaderConverter')) return;
+
+    const gear = titleLine.querySelector('.gear');
+    const left = document.createElement('div');
+    left.className = 'lexi-header-left';
+    titleLine.insertBefore(left, titleLine.firstChild);
+    left.appendChild(title);
+    if (gear) left.appendChild(gear);
+
+    const converter = document.createElement('div');
+    converter.id = 'lexiHeaderConverter';
+    converter.className = 'lexi-header-converter';
+    converter.setAttribute('aria-label', 'Quick currency converter');
+    converter.innerHTML = `
+      <span class="lexi-converter-symbol" aria-hidden="true">฿</span>
+      <input id="lexiConverterAmount" class="lexi-converter-input" type="text" inputmode="decimal" autocomplete="off" enterkeyhint="done" aria-label="Amount to convert to US dollars" placeholder="0">
+      <span class="lexi-converter-arrow" aria-hidden="true">→</span>
+      <output id="lexiConverterUsd" class="lexi-converter-output" aria-live="polite">$—</output>`;
+    titleLine.appendChild(converter);
+
+    if (!document.getElementById('lexiHeaderConverterStyles')) {
+      const style = document.createElement('style');
+      style.id = 'lexiHeaderConverterStyles';
+      style.textContent = `
+        .titleLine {
+          display:flex !important;
+          align-items:center !important;
+          justify-content:flex-start !important;
+          gap:5px !important;
+          min-width:0 !important;
+        }
+        .lexi-header-left {
+          display:flex;
+          align-items:center;
+          flex:0 0 auto;
+          gap:1px;
+          min-width:0;
+        }
+        .lexi-header-left h1 { flex:0 0 auto; white-space:nowrap; }
+        .lexi-header-left .gear {
+          flex:0 0 27px;
+          width:27px !important;
+          height:27px !important;
+          min-width:27px !important;
+          min-height:27px !important;
+          margin:0 !important;
+        }
+        .lexi-header-converter {
+          margin-left:auto;
+          min-width:0;
+          display:flex;
+          align-items:center;
+          justify-content:flex-end;
+          gap:3px;
+          flex:0 1 auto;
+          white-space:nowrap;
+        }
+        .lexi-converter-symbol {
+          flex:0 0 auto;
+          font-size:13px;
+          line-height:1;
+          color:var(--muted);
+        }
+        .lexi-converter-input {
+          box-sizing:border-box;
+          width:68px;
+          min-width:0;
+          height:28px;
+          min-height:28px;
+          border:1px solid var(--line);
+          border-radius:8px;
+          background:var(--field);
+          color:var(--text);
+          padding:2px 6px;
+          text-align:right;
+          font:700 16px/1 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+          outline:none;
+        }
+        .lexi-converter-input:focus { border-color:var(--muted); }
+        .lexi-converter-arrow {
+          flex:0 0 auto;
+          color:var(--muted);
+          font-size:11px;
+        }
+        .lexi-converter-output {
+          flex:0 0 auto;
+          min-width:48px;
+          color:var(--text);
+          font-size:11.5px;
+          font-weight:800;
+          text-align:right;
+        }
+        @media (max-width:360px) {
+          .lexi-header-left { gap:0; }
+          .lexi-header-left .gear {
+            flex-basis:25px;
+            width:25px !important;
+            min-width:25px !important;
+          }
+          .lexi-converter-input { width:60px; }
+          .lexi-converter-output { min-width:43px; font-size:11px; }
+        }
+      `;
+      document.head.appendChild(style);
+    }
+
+    const input = converter.querySelector('#lexiConverterAmount');
+    const output = converter.querySelector('#lexiConverterUsd');
+    const symbol = converter.querySelector('.lexi-converter-symbol');
+    const currencySelect = document.querySelector('.currencyPaymentRow .currencySelect');
+
+    const rateToUsd = {
+      USD: 1,
+      THB: 0.029783,
+      KRW: 0.00071,
+      VND: 0.000038,
+      JPY: 0.0066,
+      EUR: 1.16,
+      GBP: 1.34,
+      MXN: 0.054,
+      COP: 0.00026,
+      BRL: 0.185,
+      PEN: 0.295,
+      CLP: 0.00105,
+      ARS: 0.00067
+    };
+    const currencySymbols = {
+      USD: '$', THB: '฿', KRW: '₩', VND: '₫', JPY: '¥',
+      EUR: '€', GBP: '£', MXN: '$', COP: '$', BRL: 'R$', PEN: 'S/',
+      CLP: '$', ARS: '$'
+    };
+
+    function currentCurrency() {
+      return String(currencySelect?.value || 'THB').trim().toUpperCase();
+    }
+
+    function renderConversion() {
+      const currency = currentCurrency();
+      const rate = rateToUsd[currency];
+      symbol.textContent = currencySymbols[currency] || currency;
+      converter.title = rate
+        ? `Approximate ${currency} to USD converter`
+        : `${currency} quick conversion is not configured`;
+
+      const raw = String(input.value || '').replace(/,/g, '').trim();
+      const amount = Number(raw);
+      if (!raw || !Number.isFinite(amount) || amount < 0 || !rate) {
+        output.textContent = '$—';
+        return;
+      }
+      output.textContent = `$${(amount * rate).toFixed(2)}`;
+    }
+
+    input.addEventListener('input', renderConversion);
+    input.addEventListener('focus', () => {
+      renderConversion();
+      if (input.value) setTimeout(() => input.select(), 0);
+    });
+    currencySelect?.addEventListener('change', renderConversion);
+    renderConversion();
+  }
+
   function init() {
     const pagerShell = $('pagerShell');
     if (!pagerShell) return;
 
     const title = document.querySelector('.titleLine h1');
     if (title) title.innerHTML = 'Lexi Spend <span class="lexi-title-icon" aria-hidden="true">💳</span>';
+    buildHeaderConverter();
 
     const expenseForm = $('expenseForm');
     const entryCard = expenseForm?.closest('.card');
