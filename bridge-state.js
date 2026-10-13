@@ -153,13 +153,18 @@
     } catch (_) { return false; }
   };
 
+  B.frameUrl = () => {
+    const joiner = B.URL.includes('?') ? '&' : '?';
+    return `${B.URL}${joiner}lexiBridge=${Date.now()}`;
+  };
+
   B.ensureFrame = () => {
-    if (B.frame) return B.frame;
+    if (B.frame && B.frame.isConnected) return B.frame;
     if (!document.body) throw new Error('Lexi Spend is still loading.');
     const f = document.createElement('iframe');
     f.id = 'lexiSpendApiBridge';
     f.title = 'Lexi Spend private API bridge';
-    f.src = B.URL;
+    f.src = B.frameUrl();
     f.setAttribute('aria-hidden', 'true');
     f.style.cssText = 'position:fixed;width:1px;height:1px;left:-10000px;top:-10000px;border:0;opacity:0;pointer-events:none';
     document.body.appendChild(f);
@@ -167,12 +172,29 @@
     return f;
   };
 
+  B.recreateFrame = () => {
+    try { B.frame?.remove(); } catch (_) {}
+    B.frame = null;
+    B.target = null;
+    B.origin = '';
+    B.ready = false;
+    return B.ensureFrame();
+  };
+
   B.waitReady = () => {
     if (B.ready && B.target && B.origin) return Promise.resolve();
     if (B.readyPromise) return B.readyPromise;
+
     B.ensureFrame();
     B.readyPromise = new Promise((resolve, reject) => {
       B.readyResolve = resolve;
+
+      setTimeout(() => {
+        if (!B.ready) {
+          try { B.recreateFrame(); } catch (_) {}
+        }
+      }, 7000);
+
       setTimeout(() => {
         if (!B.ready) {
           B.readyPromise = null;
