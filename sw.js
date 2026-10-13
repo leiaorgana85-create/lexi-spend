@@ -1,4 +1,4 @@
-const CACHE = 'lexi-spend-v26';
+const CACHE = 'lexi-spend-v27';
 const SHELL = [
   './',
   './index.html',
@@ -23,51 +23,171 @@ const SHELL = [
   './payload/part5b.txt'
 ];
 
-const NOTES_PARITY_PATCH = String.raw`
+const UI_PATCH = String.raw`
 ;(() => {
-  if (document.getElementById('lexiTravelNotesParityV1')) return;
+  if (document.getElementById('lexiSpendUiRefineV27')) return;
 
   const style = document.createElement('style');
-  style.id = 'lexiTravelNotesParityV1';
+  style.id = 'lexiSpendUiRefineV27';
   style.textContent = [
-    '.lexi-notes-check-row {',
-    '  display:grid !important;',
-    '  grid-template-columns:20px minmax(0,1fr) !important;',
-    '  align-items:start !important;',
-    '  gap:0 !important;',
-    '  min-height:1.38em !important;',
-    '}',
-    '.lexi-notes-check-row input[type="checkbox"] {',
-    '  -webkit-appearance:checkbox !important;',
-    '  appearance:auto !important;',
-    '  box-sizing:content-box !important;',
-    '  width:14px !important;',
-    '  height:14px !important;',
-    '  min-width:0 !important;',
-    '  min-height:0 !important;',
-    '  margin:1px 0 0 1px !important;',
-    '  padding:0 !important;',
-    '  border:initial !important;',
-    '  border-radius:initial !important;',
-    '  background:initial !important;',
-    '  display:block !important;',
-    '}',
-    '.lexi-notes-check-row input[type="checkbox"]:checked {',
-    '  background:initial !important;',
-    '  border-color:initial !important;',
-    '}',
-    '.lexi-notes-check-row input[type="checkbox"]:checked::after {',
-    '  content:none !important;',
-    '}',
-    '.lexi-notes-check-label {',
-    '  min-width:0 !important;',
-    '  line-height:1.38 !important;',
-    '  white-space:pre-wrap !important;',
-    '  overflow-wrap:anywhere !important;',
-    '}',
-    '.lexi-notes-check-indent { display:none !important; }'
+    '.titleLine { width:100% !important; }',
+    '.lexi-header-left { flex:0 0 auto !important; margin-right:4px !important; }',
+    '.lexi-header-left .gear { flex:0 0 25px !important; width:25px !important; height:25px !important; min-width:25px !important; min-height:25px !important; margin:0 !important; }',
+    '.lexi-header-converter { margin-left:auto !important; margin-right:0 !important; flex:0 0 auto !important; justify-content:flex-end !important; }',
+    '.lexi-converter-symbol { font-size:14px !important; }',
+    '.lexi-converter-input { width:88px !important; }',
+    '.lexi-converter-output { min-width:64px !important; font-size:14px !important; line-height:1 !important; }',
+    'body[data-lexi-view="notes"] .lexi-notes-page { flex:0 0 auto !important; width:calc(100% - 16px) !important; max-width:calc(100% - 16px) !important; min-width:0 !important; align-self:center !important; margin:4px auto 0 !important; padding:0 0 4px !important; overflow:hidden !important; }',
+    '.lexi-notes-view, .lexi-notes-editor { flex:0 0 auto !important; width:100% !important; height:min(52dvh, 480px) !important; max-height:min(52dvh, 480px) !important; overflow-x:hidden !important; overflow-y:auto !important; scrollbar-width:none !important; }',
+    '.lexi-notes-view::-webkit-scrollbar, .lexi-notes-editor::-webkit-scrollbar { display:none !important; }',
+    '.lexi-notes-tools[hidden] { display:none !important; }',
+    '.lexi-notes-head { align-items:center !important; margin-bottom:6px !important; }',
+    '.lexi-notes-mode-actions { display:flex; align-items:center; justify-content:flex-end; gap:7px; min-width:0; }',
+    '.lexi-notes-mode-btn { min-width:44px; height:26px; border:1px solid var(--line); border-radius:7px; background:var(--card); color:var(--text); padding:0 8px; font-size:10.5px; font-weight:750; }',
+    '.lexi-notes-help { margin-top:5px !important; }',
+    '.lexi-notes-check-row { display:grid !important; grid-template-columns:20px minmax(0,1fr) !important; align-items:start !important; gap:0 !important; min-height:1.38em !important; }',
+    '.lexi-notes-check-row input[type="checkbox"] { -webkit-appearance:checkbox !important; appearance:auto !important; box-sizing:content-box !important; width:14px !important; height:14px !important; min-width:0 !important; min-height:0 !important; margin:1px 0 0 1px !important; padding:0 !important; border:initial !important; border-radius:initial !important; background:initial !important; display:block !important; }',
+    '.lexi-notes-check-row input[type="checkbox"]:checked { background:initial !important; border-color:initial !important; }',
+    '.lexi-notes-check-row input[type="checkbox"]:checked::after { content:none !important; }',
+    '.lexi-notes-check-label { min-width:0 !important; line-height:1.38 !important; white-space:pre-wrap !important; overflow-wrap:anywhere !important; }',
+    '.lexi-notes-check-row input[type="checkbox"]:checked + .lexi-notes-check-label { text-decoration:line-through; opacity:.58; }',
+    '.lexi-notes-check-indent { display:none !important; }',
+    '@media (max-width:370px) { .lexi-converter-input { width:78px !important; } .lexi-converter-output { min-width:56px !important; font-size:13px !important; } }'
   ].join('\n');
   document.head.appendChild(style);
+
+  function fixHeader() {
+    const titleLine = document.querySelector('.titleLine');
+    const left = titleLine?.querySelector('.lexi-header-left');
+    const gear = document.querySelector('.gear');
+    if (left && gear && gear.parentElement !== left) left.appendChild(gear);
+  }
+
+  function notesParts() {
+    const section = document.getElementById('lexiNotesPage');
+    if (!section) return null;
+    return {
+      section,
+      head: section.querySelector('.lexi-notes-head'),
+      status: section.querySelector('#lexiNotesStatus'),
+      tools: section.querySelector('.lexi-notes-tools'),
+      editor: section.querySelector('#lexiNotesEditor'),
+      view: section.querySelector('#lexiNotesView')
+    };
+  }
+
+  function renderRead(parts) {
+    const { editor, view } = parts;
+    if (!editor || !view) return;
+    view.replaceChildren();
+    const lines = String(editor.value || '').split('\n');
+
+    lines.forEach((line, index) => {
+      const check = line.match(/^(\s*)\[( |x|X)\]\s*(.*)$/);
+      if (check) {
+        const row = document.createElement('div');
+        row.className = 'lexi-notes-check-row';
+
+        const input = document.createElement('input');
+        input.type = 'checkbox';
+        input.checked = String(check[2]).toLowerCase() === 'x';
+        input.setAttribute('aria-label', check[3] || 'Checklist item ' + (index + 1));
+
+        const label = document.createElement('span');
+        label.className = 'lexi-notes-check-label';
+        label.textContent = check[3] || '';
+
+        input.addEventListener('click', event => {
+          event.stopPropagation();
+          const currentLines = String(editor.value || '').split('\n');
+          if (index >= currentLines.length) return;
+          currentLines[index] = currentLines[index].replace(
+            /^(\s*)\[(?: |x|X)\]/,
+            '$1[' + (input.checked ? 'x' : ' ') + ']'
+          );
+          editor.value = currentLines.join('\n');
+          editor.dispatchEvent(new Event('input', { bubbles:true }));
+          renderRead(parts);
+        });
+
+        row.append(input, label);
+        view.appendChild(row);
+        return;
+      }
+
+      const row = document.createElement('div');
+      row.className = 'lexi-notes-view-line';
+      row.textContent = line || '\u00a0';
+      view.appendChild(row);
+    });
+  }
+
+  function showRead(parts) {
+    if (!parts?.editor || !parts?.view) return;
+    renderRead(parts);
+    parts.editor.hidden = true;
+    parts.view.hidden = false;
+    if (parts.tools) parts.tools.hidden = true;
+    parts.section.dataset.lexiNotesMode = 'read';
+    const button = parts.section.querySelector('.lexi-notes-mode-btn');
+    if (button) button.textContent = 'Edit';
+  }
+
+  function showEdit(parts) {
+    if (!parts?.editor || !parts?.view) return;
+    parts.view.hidden = true;
+    parts.editor.hidden = false;
+    if (parts.tools) parts.tools.hidden = false;
+    parts.section.dataset.lexiNotesMode = 'edit';
+    const button = parts.section.querySelector('.lexi-notes-mode-btn');
+    if (button) button.textContent = 'Done';
+    parts.editor.focus();
+  }
+
+  function setupNotes() {
+    const parts = notesParts();
+    if (!parts || !parts.head || !parts.editor || !parts.view) return;
+
+    if (!parts.section.querySelector('.lexi-notes-mode-btn')) {
+      const actions = document.createElement('div');
+      actions.className = 'lexi-notes-mode-actions';
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'lexi-notes-mode-btn';
+      button.textContent = 'Edit';
+      button.setAttribute('aria-label', 'Edit note');
+
+      if (parts.status) actions.appendChild(parts.status);
+      actions.appendChild(button);
+      parts.head.appendChild(actions);
+
+      button.addEventListener('click', () => {
+        if (parts.section.dataset.lexiNotesMode === 'edit') {
+          parts.editor.blur();
+          showRead(parts);
+        } else {
+          showEdit(parts);
+        }
+      });
+    }
+
+    if (!parts.view.dataset.lexiReadGuard) {
+      parts.view.dataset.lexiReadGuard = '1';
+      parts.view.addEventListener('click', event => {
+        if (event.target instanceof HTMLInputElement && event.target.type === 'checkbox') return;
+        event.preventDefault();
+        event.stopImmediatePropagation();
+      }, true);
+    }
+
+    const notesTab = document.querySelector('[data-lexi-view="notes"]');
+    if (notesTab && !notesTab.dataset.lexiReadDefault) {
+      notesTab.dataset.lexiReadDefault = '1';
+      notesTab.addEventListener('click', () => queueMicrotask(() => showRead(notesParts())));
+    }
+
+    showRead(parts);
+  }
 
   document.addEventListener('keydown', event => {
     const editor = event.target;
@@ -108,6 +228,29 @@ const NOTES_PARITY_PATCH = String.raw`
 
     editor.dispatchEvent(new Event('input', { bubbles:true }));
   }, true);
+
+  const run = () => {
+    fixHeader();
+    setupNotes();
+  };
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', run, { once:true });
+  } else {
+    queueMicrotask(run);
+  }
+
+  let queued = false;
+  const observer = new MutationObserver(() => {
+    if (queued) return;
+    queued = true;
+    requestAnimationFrame(() => {
+      queued = false;
+      fixHeader();
+      if (!document.querySelector('.lexi-notes-mode-btn')) setupNotes();
+    });
+  });
+  observer.observe(document.documentElement, { childList:true, subtree:true });
 })();
 `;
 
@@ -144,7 +287,7 @@ self.addEventListener('fetch', event => {
 
         if (response.ok && isUiJs) {
           const text = await response.text();
-          finalResponse = new Response(text + NOTES_PARITY_PATCH, {
+          finalResponse = new Response(text + UI_PATCH, {
             status: response.status,
             statusText: response.statusText,
             headers: response.headers
