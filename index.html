@@ -236,19 +236,137 @@
         }
         html = html.replace(
           recentThreeMarker,
-          'rows.slice(0, 5).forEach(x => {'
+          'rows.slice(0, 3).forEach(x => {'
         );
 
         const uiStyleTag = '<link rel="stylesheet" href="./spend-ui.css?v=5">';
         const uiScriptTag = '<script src="./spend-ui.js?v=5">' + closeScript;
+        const refineStyleTag = `<style id="lexiSpendRefineV15">
+          .lexi-recent-title { font-size: 11px !important; }
+          .compactSummary > .lexi-section-title { display:none !important; }
+          .lexi-cash-card .cashControlsRow {
+            display:flex !important;
+            justify-content:flex-start !important;
+            align-items:flex-end !important;
+            gap:6px !important;
+          }
+          .lexi-cash-card .cashCurrencyField {
+            flex:0 0 122px !important;
+            width:122px !important;
+            min-width:0 !important;
+          }
+          .lexi-cash-card .cashActionButtons {
+            flex:0 0 auto !important;
+            margin:0 !important;
+            padding:0 !important;
+          }
+          .lexi-cash-card #addCashBtn {
+            min-width:158px !important;
+            width:158px !important;
+            padding-left:12px !important;
+            padding-right:12px !important;
+          }
+          .lexi-atm-withdrawal-heading { font-size:15px !important; }
+          .lexi-hide-atm-preview { display:none !important; }
+          .lexi-notes-tools { gap:4px !important; padding-bottom:5px !important; }
+          .lexi-note-tool {
+            width:32px !important;
+            min-width:32px !important;
+            height:32px !important;
+            min-height:32px !important;
+            padding:3px !important;
+            margin:0 !important;
+            display:inline-flex !important;
+            align-items:center !important;
+            justify-content:center !important;
+            font-size:0 !important;
+          }
+          .lexi-note-tool svg {
+            width:22px !important;
+            height:22px !important;
+            display:block;
+            stroke:currentColor;
+            fill:none;
+            stroke-width:1.9;
+            stroke-linecap:round;
+            stroke-linejoin:round;
+          }
+        </style>`;
+        const refineScriptTag = '<script id="lexiSpendRefineScriptV15">' + `
+          (() => {
+            const icons = {
+              bullet: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="7" r="1.4" fill="currentColor" stroke="none"/><circle cx="5" cy="12" r="1.4" fill="currentColor" stroke="none"/><circle cx="5" cy="17" r="1.4" fill="currentColor" stroke="none"/><path d="M10 7h9M10 12h9M10 17h9"/></svg>',
+              number: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h2v5M4 11h4M4 15.5c.6-.8 1.2-1.2 2-1.2 1 0 1.8.7 1.8 1.6 0 1.6-3.8 2.1-3.8 4.1h4M11 7h9M11 17h9"/></svg>',
+              check: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="4" width="6" height="6" rx="1"/><path d="m5 7 1.3 1.3L8.5 6M12 7h8M3.5 14h6v6h-6zM12 17h8"/></svg>',
+              indent: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 6h10M10 12h10M10 18h10M3 9l3 3-3 3M6 12H2"/></svg>',
+              undo: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 8 4 12l5 4M5 12h7c4.4 0 7 2 7 6"/></svg>',
+              redo: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 8 5 4-5 4M19 12h-7c-4.4 0-7 2-7 6"/></svg>',
+              date: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M7 3v4M17 3v4M3 9h18M8 13h2M14 13h2M8 17h2M14 17h2"/></svg>'
+            };
+
+            function setIcon(selector, icon, label) {
+              const button = document.querySelector(selector);
+              if (!button) return;
+              button.innerHTML = icons[icon];
+              button.setAttribute('aria-label', label);
+              button.setAttribute('title', label);
+            }
+
+            function refineNotesTools() {
+              setIcon('.lexi-note-tool[data-note-prefix="• "]', 'bullet', 'Bullet');
+              setIcon('.lexi-note-tool[data-note-numbered]', 'number', 'Number');
+              setIcon('.lexi-note-tool[data-note-prefix="☐ "]', 'check', 'Check');
+              setIcon('.lexi-note-tool[data-note-indent]', 'indent', 'Indent');
+              setIcon('.lexi-note-tool[data-note-undo]', 'undo', 'Undo');
+              setIcon('.lexi-note-tool[data-note-redo]', 'redo', 'Redo');
+              setIcon('.lexi-note-tool[data-note-date]', 'date', 'Date');
+            }
+
+            function refineAtmDialog() {
+              document.querySelectorAll('h1,h2,h3,h4,.dialogTitle,.modalTitle').forEach(el => {
+                const text = (el.textContent || '').trim().toLowerCase();
+                if (text.includes('atm withdrawal')) el.classList.add('lexi-atm-withdrawal-heading');
+              });
+
+              document.querySelectorAll('div,p,span,small,label').forEach(el => {
+                const text = (el.textContent || '').trim().replace(/\s+/g, ' ').toLowerCase();
+                if (text === 'enter an amount to preview usd' || text === 'enter an amount to preview usd.') {
+                  el.classList.add('lexi-hide-atm-preview');
+                }
+              });
+            }
+
+            function refineAll() {
+              refineNotesTools();
+              refineAtmDialog();
+            }
+
+            if (document.readyState === 'loading') {
+              document.addEventListener('DOMContentLoaded', refineAll, { once:true });
+            } else {
+              refineAll();
+            }
+
+            let queued = false;
+            const observer = new MutationObserver(() => {
+              if (queued) return;
+              queued = true;
+              requestAnimationFrame(() => {
+                queued = false;
+                refineAll();
+              });
+            });
+            observer.observe(document.documentElement, { childList:true, subtree:true });
+          })();
+        ` + closeScript;
 
         if (!html.includes('</head>') || !html.includes('</body>')) {
           throw new Error('Lexi Spend UI shell markers were not found.');
         }
 
         html = html.replace('<h1>Spend Log</h1>', '<h1>Lexi Spend</h1>');
-        html = html.replace('</head>', uiStyleTag + '\n</head>');
-        html = html.replace('</body>', uiScriptTag + '\n</body>');
+        html = html.replace('</head>', uiStyleTag + '\n' + refineStyleTag + '\n</head>');
+        html = html.replace('</body>', uiScriptTag + '\n' + refineScriptTag + '\n</body>');
 
         document.open();
         document.write(html);
