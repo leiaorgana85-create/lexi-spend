@@ -41,7 +41,7 @@
       <div class="lexi-notes-tools" aria-label="Plain text tools">
         <button class="lexi-note-tool" type="button" data-note-prefix="• ">• Bullet</button>
         <button class="lexi-note-tool" type="button" data-note-numbered>1. Number</button>
-        <button class="lexi-note-tool" type="button" data-note-prefix="☐ ">☐ Check</button>
+        <button class="lexi-note-tool" type="button" data-note-prefix="☐ " data-note-check>☐ Check</button>
         <button class="lexi-note-tool" type="button" data-note-indent>↳ Indent</button>
         <button class="lexi-note-tool" type="button" data-note-outdent aria-label="Outdent" title="Outdent"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 6h10M10 12h10M10 18h10M6 9l-3 3 3 3M3 12h5"/></svg></button>
         <button class="lexi-note-tool" type="button" data-note-undo>↶ Undo</button>
@@ -49,13 +49,66 @@
         <button class="lexi-note-tool" type="button" data-note-date>Date</button>
       </div>
       <textarea id="lexiNotesEditor" class="lexi-notes-editor" spellcheck="true" aria-label="Notes"></textarea>
+      <div id="lexiNotesView" class="lexi-notes-view" aria-label="Notes read view" hidden></div>
       <div class="lexi-notes-help">Saved automatically on this device.</div>`;
 
     anchor.insertAdjacentElement('afterend', section);
 
     const editor = section.querySelector('#lexiNotesEditor');
+    const view = section.querySelector('#lexiNotesView');
     const status = section.querySelector('#lexiNotesStatus');
     let saveTimer = null;
+
+    if (!document.getElementById('lexiNotesChecklistStyles')) {
+      const style = document.createElement('style');
+      style.id = 'lexiNotesChecklistStyles';
+      style.textContent = `
+        .lexi-notes-view {
+          flex:1 1 auto;
+          width:100%;
+          max-width:100%;
+          min-width:0;
+          min-height:0;
+          box-sizing:border-box;
+          overflow-x:hidden;
+          overflow-y:auto;
+          overscroll-behavior-x:none;
+          overscroll-behavior-y:contain;
+          touch-action:pan-y;
+          scrollbar-width:none;
+          border:1px solid var(--line);
+          border-radius:11px;
+          background:var(--field);
+          color:var(--text);
+          padding:10px;
+          font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+          font-size:15px;
+          line-height:1.45;
+          white-space:pre-wrap;
+          overflow-wrap:anywhere;
+        }
+        .lexi-notes-view::-webkit-scrollbar { display:none; }
+        .lexi-notes-view[hidden] { display:none !important; }
+        .lexi-notes-view-line { min-height:1.45em; white-space:pre-wrap; }
+        .lexi-notes-check-row {
+          display:flex;
+          align-items:flex-start;
+          gap:7px;
+          min-height:1.45em;
+          white-space:normal;
+        }
+        .lexi-notes-check-row input[type="checkbox"] {
+          flex:0 0 auto;
+          width:18px;
+          height:18px;
+          margin:1px 0 0;
+          accent-color:#2563eb;
+        }
+        .lexi-notes-check-label { min-width:0; white-space:pre-wrap; overflow-wrap:anywhere; }
+        .lexi-notes-check-indent { flex:0 0 auto; white-space:pre; }
+      `;
+      document.head.appendChild(style);
+    }
 
     try { editor.value = localStorage.getItem(NOTES_KEY) || ''; } catch (_) {}
 
@@ -74,7 +127,71 @@
       saveTimer = setTimeout(saveNotes, 250);
     }
 
+    function renderNotesView() {
+      view.replaceChildren();
+      const lines = String(editor.value || '').split('\n');
+
+      lines.forEach((line, index) => {
+        const check = line.match(/^(\s*)\[( |x|X)\]\s*(.*)$/);
+        if (check) {
+          const row = document.createElement('div');
+          row.className = 'lexi-notes-check-row';
+
+          if (check[1]) {
+            const indent = document.createElement('span');
+            indent.className = 'lexi-notes-check-indent';
+            indent.textContent = check[1];
+            row.appendChild(indent);
+          }
+
+          const input = document.createElement('input');
+          input.type = 'checkbox';
+          input.checked = String(check[2]).toLowerCase() === 'x';
+          input.setAttribute('aria-label', check[3] || `Checklist item ${index + 1}`);
+
+          const label = document.createElement('span');
+          label.className = 'lexi-notes-check-label';
+          label.textContent = check[3] || '';
+
+          input.addEventListener('click', event => {
+            event.stopPropagation();
+            const currentLines = String(editor.value || '').split('\n');
+            if (index >= currentLines.length) return;
+            currentLines[index] = currentLines[index].replace(
+              /^(\s*)\[(?: |x|X)\]/,
+              `$1[${input.checked ? 'x' : ' '}]`
+            );
+            editor.value = currentLines.join('\n');
+            clearTimeout(saveTimer);
+            saveNotes();
+            renderNotesView();
+          });
+
+          row.append(input, label);
+          view.appendChild(row);
+          return;
+        }
+
+        const row = document.createElement('div');
+        row.className = 'lexi-notes-view-line';
+        row.textContent = line || '\u00a0';
+        view.appendChild(row);
+      });
+    }
+
+    function showReadView() {
+      renderNotesView();
+      editor.hidden = true;
+      view.hidden = false;
+    }
+
+    function showEditor() {
+      view.hidden = true;
+      editor.hidden = false;
+    }
+
     function replaceSelectedLines(formatter) {
+      showEditor();
       const value = editor.value;
       const start = editor.selectionStart;
       const end = editor.selectionEnd;
@@ -89,7 +206,11 @@
     }
 
     section.querySelectorAll('[data-note-prefix]').forEach(button => {
+      if (button.hasAttribute('data-note-check')) return;
       button.addEventListener('click', () => replaceSelectedLines(line => `${button.dataset.notePrefix || ''}${line}`));
+    });
+    section.querySelector('[data-note-check]').addEventListener('click', () => {
+      replaceSelectedLines(line => `[ ] ${line}`);
     });
     section.querySelector('[data-note-numbered]').addEventListener('click', () => {
       replaceSelectedLines((line, index) => `${index + 1}. ${line}`);
@@ -105,6 +226,7 @@
       });
     });
     section.querySelector('[data-note-date]').addEventListener('click', () => {
+      showEditor();
       const d = new Date();
       const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
       const start = editor.selectionStart;
@@ -115,6 +237,7 @@
     });
 
     function historyCommand(command) {
+      showEditor();
       editor.focus();
       try { document.execCommand(command); } catch (_) {}
       scheduleSave();
@@ -122,10 +245,21 @@
     section.querySelector('[data-note-undo]').addEventListener('click', () => historyCommand('undo'));
     section.querySelector('[data-note-redo]').addEventListener('click', () => historyCommand('redo'));
 
+    view.addEventListener('click', () => {
+      showEditor();
+      editor.focus();
+    });
+
     editor.addEventListener('input', scheduleSave);
+    editor.addEventListener('focus', showEditor);
     editor.addEventListener('blur', () => {
       clearTimeout(saveTimer);
       saveNotes();
+      setTimeout(() => {
+        if (document.activeElement === editor) return;
+        if (document.activeElement?.closest?.('.lexi-notes-tools')) return;
+        showReadView();
+      }, 0);
     });
 
     setStatus(editor.value ? 'Saved' : '');
