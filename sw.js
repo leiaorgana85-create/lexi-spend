@@ -1,4 +1,4 @@
-const CACHE = 'lexi-spend-v23';
+const CACHE = 'lexi-spend-v24';
 const SHELL = [
   './',
   './index.html',
@@ -43,8 +43,13 @@ self.addEventListener('fetch', event => {
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) return;
 
+  const forceFreshUi = url.pathname.endsWith('/spend-ui.js') || url.pathname.endsWith('/spend-ui.css');
+  const networkRequest = forceFreshUi
+    ? new Request(request, { cache: 'no-store' })
+    : request;
+
   event.respondWith(
-    fetch(request)
+    fetch(networkRequest)
       .then(response => {
         if (response.ok) {
           const copy = response.clone();
