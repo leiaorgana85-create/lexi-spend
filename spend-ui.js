@@ -14,7 +14,7 @@
     parent.insertBefore(title, parent.firstChild);
   }
 
-  function buildNotesPage(app, pagerShell) {
+  function buildNotesPage(pagerShell) {
     if (document.getElementById('lexiNotesPage')) return document.getElementById('lexiNotesPage');
 
     const section = document.createElement('section');
@@ -33,7 +33,7 @@
         <button class="lexi-note-tool" type="button" data-note-date>Date</button>
       </div>
       <textarea id="lexiNotesEditor" class="lexi-notes-editor" spellcheck="true" placeholder="Write anything here — spending reminders, uncategorized items, app notes, trip expenses…"></textarea>
-      <div class="lexi-notes-help">Plain notes are saved automatically on this device.</div>`;
+      <div class="lexi-notes-help">Saved automatically on this device.</div>`;
 
     pagerShell.insertAdjacentElement('afterend', section);
 
@@ -111,36 +111,35 @@
     return section;
   }
 
-  function buildTabbar() {
-    if (document.getElementById('lexiTabbar')) return document.getElementById('lexiTabbar');
-    const nav = document.createElement('nav');
-    nav.id = 'lexiTabbar';
-    nav.className = 'lexi-tabbar';
-    nav.setAttribute('aria-label', 'Primary');
-    nav.innerHTML = `
-      <button class="lexi-tab active" type="button" data-lexi-view="spend">Spend</button>
-      <button class="lexi-tab" type="button" data-lexi-view="cash">Cash</button>
-      <button class="lexi-tab" type="button" data-lexi-view="notes">Notes</button>`;
-    document.body.appendChild(nav);
-    return nav;
+  function buildNotesDot(pageNav) {
+    let dot = document.getElementById('dotNotes');
+    if (dot) return dot;
+
+    dot = document.createElement('span');
+    dot.id = 'dotNotes';
+    dot.className = 'dot';
+    dot.setAttribute('role', 'button');
+    dot.setAttribute('tabindex', '0');
+    dot.setAttribute('aria-label', 'Notes');
+    pageNav.appendChild(dot);
+    return dot;
   }
 
   function init() {
-    const app = document.querySelector('.app');
     const pagerShell = $('pagerShell');
+    const pageNav = document.querySelector('.pageNav');
     const dotSpend = $('dotSpend');
     const dotCash = $('dotCash');
-    if (!app || !pagerShell || !dotSpend || !dotCash) return;
+    if (!pagerShell || !pageNav || !dotSpend || !dotCash) return;
 
     const title = document.querySelector('.titleLine h1');
-    if (title) title.textContent = 'Lexi Spend';
+    if (title) {
+      title.innerHTML = 'Lexi Spend <span class="lexi-title-icon" aria-hidden="true">💳</span>';
+    }
 
     const expenseForm = $('expenseForm');
     const entryCard = expenseForm?.closest('.card');
-    if (entryCard) {
-      entryCard.classList.add('lexi-entry-card');
-      addSectionTitle(entryCard, 'Log Spend');
-    }
+    if (entryCard) entryCard.classList.add('lexi-entry-card');
 
     const summaryCard = document.querySelector('.compactSummary');
     if (summaryCard) {
@@ -162,51 +161,105 @@
       if (titleRow && balance) titleRow.insertAdjacentElement('afterend', balance);
     }
 
-    buildNotesPage(app, pagerShell);
-    const tabbar = buildTabbar();
-    const tabs = Array.from(tabbar.querySelectorAll('[data-lexi-view]'));
+    const notesPage = buildNotesPage(pagerShell);
+    const dotNotes = buildNotesDot(pageNav);
 
-    function updateActiveTab(view) {
+    function persistView(view) {
+      try { localStorage.setItem(VIEW_KEY, view); } catch (_) {}
+    }
+
+    function setViewState(view) {
       const safeView = ['spend', 'cash', 'notes'].includes(view) ? view : 'spend';
       document.body.dataset.lexiView = safeView;
-      tabs.forEach(tab => {
-        const active = tab.dataset.lexiView === safeView;
-        tab.classList.toggle('active', active);
-        tab.setAttribute('aria-current', active ? 'page' : 'false');
-      });
-      try { localStorage.setItem(VIEW_KEY, safeView); } catch (_) {}
+      dotNotes.classList.toggle('active', safeView === 'notes');
+      dotNotes.setAttribute('aria-current', safeView === 'notes' ? 'page' : 'false');
+      persistView(safeView);
     }
 
     function showView(view) {
-      if (view === 'cash') {
-        dotCash.click();
-        updateActiveTab('cash');
-        return;
-      }
       if (view === 'notes') {
-        updateActiveTab('notes');
+        document.body.dataset.lexiView = 'notes';
+        dotSpend.classList.remove('active');
+        dotCash.classList.remove('active');
+        dotNotes.classList.add('active');
+        dotNotes.setAttribute('aria-current', 'page');
+        persistView('notes');
         return;
       }
+
+      dotNotes.classList.remove('active');
+      dotNotes.setAttribute('aria-current', 'false');
+
+      if (view === 'cash') {
+        document.body.dataset.lexiView = 'cash';
+        dotCash.click();
+        setViewState('cash');
+        return;
+      }
+
+      document.body.dataset.lexiView = 'spend';
       dotSpend.click();
-      updateActiveTab('spend');
+      setViewState('spend');
     }
 
-    tabs.forEach(tab => {
-      tab.addEventListener('click', () => showView(tab.dataset.lexiView));
+    dotSpend.addEventListener('click', () => setViewState('spend'));
+    dotCash.addEventListener('click', () => setViewState('cash'));
+    dotNotes.addEventListener('click', () => showView('notes'));
+    dotNotes.addEventListener('keydown', event => {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        showView('notes');
+      }
     });
 
     const pagerObserver = new MutationObserver(() => {
       if (document.body.dataset.lexiView === 'notes') return;
-      updateActiveTab(dotCash.classList.contains('active') ? 'cash' : 'spend');
+      setViewState(dotCash.classList.contains('active') ? 'cash' : 'spend');
     });
     pagerObserver.observe(dotSpend, { attributes: true, attributeFilter: ['class'] });
     pagerObserver.observe(dotCash, { attributes: true, attributeFilter: ['class'] });
+
+    let swipeStartX = null;
+    let swipeStartY = null;
+
+    function onTouchStart(event) {
+      const touch = event.changedTouches?.[0];
+      if (!touch) return;
+      swipeStartX = touch.clientX;
+      swipeStartY = touch.clientY;
+    }
+
+    function onTouchEnd(event) {
+      if (swipeStartX === null || swipeStartY === null) return;
+      const touch = event.changedTouches?.[0];
+      if (!touch) return;
+
+      const dx = touch.clientX - swipeStartX;
+      const dy = touch.clientY - swipeStartY;
+      swipeStartX = null;
+      swipeStartY = null;
+
+      if (Math.abs(dx) < 55 || Math.abs(dx) <= Math.abs(dy)) return;
+
+      const current = document.body.dataset.lexiView || 'spend';
+      if (current === 'cash' && dx < 0) {
+        showView('notes');
+      } else if (current === 'notes' && dx > 0) {
+        showView('cash');
+      }
+    }
+
+    pagerShell.addEventListener('touchstart', onTouchStart, { passive: true });
+    pagerShell.addEventListener('touchend', onTouchEnd, { passive: true });
+    notesPage.addEventListener('touchstart', onTouchStart, { passive: true });
+    notesPage.addEventListener('touchend', onTouchEnd, { passive: true });
 
     let initialView = 'spend';
     try {
       const saved = localStorage.getItem(VIEW_KEY);
       if (['spend', 'cash', 'notes'].includes(saved)) initialView = saved;
     } catch (_) {}
+
     showView(initialView);
   }
 
