@@ -221,12 +221,17 @@
 
     let swipeStartX = null;
     let swipeStartY = null;
+    let swipeStartView = 'spend';
 
     function onTouchStart(event) {
       const touch = event.changedTouches?.[0];
       if (!touch) return;
       swipeStartX = touch.clientX;
       swipeStartY = touch.clientY;
+      // Capture the page at gesture start. The original Spend/Cash pager
+      // also handles this same touchend, so reading the view afterward can
+      // see Cash even when the gesture actually began on Spend.
+      swipeStartView = document.body.dataset.lexiView || 'spend';
     }
 
     function onTouchEnd(event) {
@@ -236,15 +241,18 @@
 
       const dx = touch.clientX - swipeStartX;
       const dy = touch.clientY - swipeStartY;
+      const startView = swipeStartView;
       swipeStartX = null;
       swipeStartY = null;
+      swipeStartView = 'spend';
 
       if (Math.abs(dx) < 55 || Math.abs(dx) <= Math.abs(dy)) return;
 
-      const current = document.body.dataset.lexiView || 'spend';
-      if (current === 'cash' && dx < 0) {
+      // Spend <-> Cash remains owned by the original pager. This handler
+      // only extends the sequence at the Cash <-> Notes boundary.
+      if (startView === 'cash' && dx < 0) {
         showView('notes');
-      } else if (current === 'notes' && dx > 0) {
+      } else if (startView === 'notes' && dx > 0) {
         showView('cash');
       }
     }
