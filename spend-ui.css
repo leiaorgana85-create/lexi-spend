@@ -7,9 +7,7 @@ body {
   overscroll-behavior: none;
 }
 
-body {
-  min-height: 100dvh;
-}
+body { min-height: 100dvh; }
 
 .app {
   width: 100%;
@@ -30,9 +28,7 @@ body {
   border-bottom: 1px solid var(--line);
 }
 
-.titleLine {
-  align-items: center;
-}
+.titleLine { align-items: center; }
 
 h1 {
   display: flex;
@@ -44,10 +40,7 @@ h1 {
   letter-spacing: -0.01em;
 }
 
-.lexi-title-icon {
-  font-size: 11.5px;
-  line-height: 1;
-}
+.lexi-title-icon { font-size: 11.5px; line-height: 1; }
 
 .gear {
   width: 29px;
@@ -60,54 +53,21 @@ h1 {
   padding: 0;
 }
 
-/* The old pager dots remain in the DOM because the original Spend/Cash
-   pager uses them internally, but visible navigation is now the tab bar. */
-.pageNav {
-  display: none !important;
-}
+.pageNav { display: none !important; }
 
-.stayMini {
-  margin: 0 2px 7px;
-  text-align: left;
-  font-size: 9.5px;
-  line-height: 1.3;
-}
-
-.lexi-section-title {
-  margin: 0 0 6px;
-  font-size: 13px;
-  line-height: 1.2;
-  font-weight: 800;
-  letter-spacing: -0.005em;
-  color: var(--text);
-}
-
-/* Main pages are contained inside the viewport. The body never scrolls;
-   only a page that genuinely needs more space can scroll internally. */
 #pagerShell,
-.lexi-stay-page,
+.lexi-limit-page,
 .lexi-notes-page {
   flex: 1 1 auto;
   min-height: 0;
 }
 
-#pagerShell {
-  overflow: hidden;
-}
-
-.pagerTrack {
-  transition: none !important;
-}
-
-.pagerTrack,
-.page,
-.pageInner {
-  height: 100%;
-  min-height: 0;
-}
+#pagerShell { overflow: hidden; }
+.pagerTrack { transition: none !important; }
+.pagerTrack, .page, .pageInner { height: 100%; min-height: 0; }
 
 .pageInner,
-.lexi-stay-scroll {
+.lexi-limit-scroll {
   overflow-y: auto;
   overflow-x: hidden;
   overscroll-behavior-y: contain;
@@ -117,94 +77,71 @@ h1 {
 }
 
 .pageInner::-webkit-scrollbar,
-.lexi-stay-scroll::-webkit-scrollbar,
-.lexi-notes-editor::-webkit-scrollbar {
-  display: none;
-}
+.lexi-limit-scroll::-webkit-scrollbar,
+.lexi-notes-editor::-webkit-scrollbar { display: none; }
 
-body[data-lexi-view="stay"] #pagerShell,
-body[data-lexi-view="notes"] #pagerShell {
-  display: none;
-}
+body[data-lexi-view="limit"] #pagerShell,
+body[data-lexi-view="notes"] #pagerShell { display: none; }
 
-.lexi-stay-page,
-.lexi-notes-page {
-  display: none;
-}
+.lexi-limit-page,
+.lexi-notes-page { display: none; }
+body[data-lexi-view="limit"] .lexi-limit-page { display: block; }
+body[data-lexi-view="notes"] .lexi-notes-page { display: flex; }
 
-body[data-lexi-view="stay"] .lexi-stay-page {
-  display: block;
-}
-
-body[data-lexi-view="notes"] .lexi-notes-page {
-  display: flex;
-}
-
-/* Spend entry page. */
+/* Spend: still compact, but with more breathing room between rows. */
 .lexi-entry-card {
-  padding: 8px 9px;
+  padding: 10px 10px;
   margin-bottom: 0;
   border-radius: 13px;
 }
 
-.lexi-entry-card .row {
-  gap: 6px;
-  margin-top: 5px;
-}
-
-.lexi-entry-card #expenseForm > .row:first-child {
-  margin-top: 0;
-}
+.lexi-entry-card .row { gap: 8px; margin-top: 8px; }
+.lexi-entry-card #expenseForm > .row:first-child { margin-top: 0; }
 
 .lexi-entry-card label,
 .lexi-entry-card .paymentLabel {
-  margin: 0 0 3px 1px;
+  margin: 0 0 4px 1px;
   font-size: 10.5px;
 }
 
 .lexi-entry-card input:not([type="file"]),
 .lexi-entry-card select {
-  min-height: 34px;
-  height: 34px;
+  min-height: 38px;
+  height: 38px;
   border-radius: 9px;
-  padding: 4px 8px;
+  padding: 5px 8px;
 }
 
-.lexi-entry-card #merchant {
-  font-size: 16px;
-}
+.lexi-entry-card #merchant { font-size: 16px; }
 
 .lexi-entry-card #category,
 .lexi-entry-card .currencyPaymentRow .currencySelect {
-  min-height: 34px;
-  height: 34px;
-  padding-top: 4px;
-  padding-bottom: 4px;
+  min-height: 38px;
+  height: 38px;
+  padding-top: 5px;
+  padding-bottom: 5px;
   font-size: 13px;
 }
 
 .lexi-entry-card .currencyPaymentRow {
   grid-template-columns: minmax(0,.8fr) minmax(0,1.2fr);
-  gap: 6px;
-  margin-top: 5px;
+  gap: 8px;
+  margin-top: 8px;
 }
 
 .lexi-entry-card .currencyPaymentRow .payBtn {
-  min-height: 34px;
-  height: 34px;
+  min-height: 38px;
+  height: 38px;
   border-radius: 9px;
   padding: 0 5px;
   font-size: 12px;
 }
 
-.lexi-entry-card .amountFull {
-  margin-top: 5px;
-}
-
+.lexi-entry-card .amountFull { margin-top: 8px; }
 .lexi-entry-card .amountFull .amountWrap input {
-  min-height: 36px;
-  height: 36px;
-  padding: 3px 42px 3px 8px;
+  min-height: 40px;
+  height: 40px;
+  padding: 4px 42px 4px 8px;
   font-size: 19px;
 }
 
@@ -217,45 +154,25 @@ body[data-lexi-view="notes"] .lexi-notes-page {
 
 .lexi-entry-card .usdPreview {
   min-height: 14px;
-  margin: 3px 1px 0;
+  margin: 4px 1px 0;
   font-size: 10.5px;
 }
 
 .lexi-entry-card .dateBar {
   gap: 7px;
-  margin-top: 5px;
-  padding: 5px 8px;
+  margin-top: 8px;
+  padding: 6px 8px;
   border-radius: 9px;
 }
+.lexi-entry-card .dateMain { font-size: 12.5px; }
+.lexi-entry-card .dateSub { font-size: 9.5px; }
+.lexi-entry-card .dateChangeWrap { min-width: 58px; min-height: 30px; }
+.lexi-entry-card .changeDate { font-size: 11px; }
 
-.lexi-entry-card .dateMain {
-  font-size: 12.5px;
-}
-
-.lexi-entry-card .dateSub {
-  font-size: 9.5px;
-}
-
-.lexi-entry-card .dateChangeWrap {
-  min-width: 58px;
-  min-height: 29px;
-}
-
-.lexi-entry-card .changeDate {
-  font-size: 11px;
-}
-
-.lexi-entry-card .noteToggle {
-  padding: 6px 1px 2px;
-  font-size: 11.5px;
-}
-
-.lexi-entry-card #noteBox {
-  margin-top: 2px;
-}
-
+.lexi-entry-card .noteToggle { padding: 8px 1px 3px; font-size: 11.5px; }
+.lexi-entry-card #noteBox { margin-top: 3px; }
 .lexi-entry-card #noteBox textarea {
-  min-height: 56px;
+  min-height: 58px;
   padding: 7px 8px;
   border-radius: 9px;
   font-size: 16px;
@@ -263,40 +180,55 @@ body[data-lexi-view="notes"] .lexi-notes-page {
 }
 
 .lexi-entry-card .saveActionRow {
-  grid-template-columns: minmax(0,1fr) 36px;
-  gap: 6px;
-  margin-top: 5px;
+  grid-template-columns: minmax(0,1fr) 38px;
+  gap: 7px;
+  margin-top: 8px;
 }
-
 .lexi-entry-card .saveActionRow .primary {
-  min-height: 36px;
-  height: 36px;
+  min-height: 38px;
+  height: 38px;
   border-radius: 9px;
   font-size: 14px;
 }
-
 .lexi-entry-card .receiptIconBtn {
-  width: 36px;
-  height: 36px;
-  min-height: 36px;
+  width: 38px;
+  height: 38px;
+  min-height: 38px;
   border-radius: 9px;
   font-size: 17px;
 }
+.lexi-entry-card .status { margin-top: 4px; font-size: 10.5px; }
 
-.lexi-entry-card .status {
-  margin-top: 4px;
-  font-size: 10.5px;
+.lexi-recent-card {
+  margin-top: 11px;
+  padding: 9px 10px 6px;
+  border: 1px solid var(--line);
+  border-radius: 13px;
+  background: var(--card);
 }
-
-/* Stay page: the summary is now its own destination. */
-.lexi-stay-page {
-  padding: 2px 0 0;
-  overflow: hidden;
+.lexi-recent-title {
+  margin: 0 0 4px;
+  padding: 0;
+  border: 0;
+  font-size: 13px;
+  font-weight: 800;
 }
+.recentCompact { margin-top: 0; padding: 0; border-top: 0; }
+.txnCompact { min-height: 38px; padding: 5px 0; }
 
-.lexi-stay-scroll {
+/* Limit dashboard. */
+.lexi-limit-page { padding: 2px 0 0; overflow: hidden; }
+.lexi-limit-scroll {
   height: 100%;
   padding: 2px 2px 12px;
+}
+
+.lexi-limit-page .stayMini {
+  margin: 0 2px 8px;
+  text-align: left;
+  font-size: 9.5px;
+  line-height: 1.3;
+  color: var(--muted);
 }
 
 .compactSummary {
@@ -308,144 +240,138 @@ body[data-lexi-view="notes"] .lexi-notes-page {
 }
 
 .compactSummary > .lexi-section-title {
-  margin: 0 0 6px;
+  margin: 0 0 8px;
   font-size: 16px;
 }
 
 .compactSummary .summaryGrid {
-  gap: 0;
-  margin: 0 0 5px;
-  border-top: 1px solid var(--line);
-  border-bottom: 1px solid var(--line);
+  gap: 8px;
+  margin: 0 0 10px;
 }
 
 .compactSummary .summaryMetric {
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-  padding: 7px 8px;
+  min-height: 72px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 10px;
+  background: var(--card);
 }
-
-.compactSummary .summaryMetric + .summaryMetric {
-  border-left: 1px solid var(--line);
-}
-
-.compactSummary .summaryMetric .k {
-  font-size: 9.5px;
-}
-
-.compactSummary .summaryMetric .v {
-  font-size: 16px;
-}
-
-.compactSummary .summaryRange {
-  font-size: 8.5px;
-}
+.compactSummary .summaryMetric .k { font-size: 10px; color: var(--muted); }
+.compactSummary .summaryMetric .v { font-size: 19px; margin-top: 3px; }
+.compactSummary .summaryRange { font-size: 9px; }
 
 .compactSummary .budgetTitle {
-  margin: 7px 0 0;
-  padding-top: 7px;
+  display: grid;
+  grid-template-columns: minmax(0,1fr) auto;
+  align-items: end;
+  gap: 8px;
+  margin: 0;
+  padding: 10px 11px 4px;
+  border: 1px solid var(--line);
+  border-bottom: 0;
+  border-radius: 12px 12px 0 0;
+  background: var(--card);
+}
+.compactSummary .budgetTitle b { font-size: 12px !important; }
+.compactSummary #budgetTotal { font-size: 11.5px; font-weight: 800; }
+.compactSummary #budgetEquivalent {
+  margin: 0;
+  padding: 0 11px 7px;
+  border-left: 1px solid var(--line);
+  border-right: 1px solid var(--line);
+  background: var(--card);
 }
 
-.compactSummary #budgetEquivalent,
-.compactSummary #budgetRows,
-.compactSummary #stayTotalLine {
-  margin-left: 0;
-  margin-right: 0;
+.lexi-overall-progress {
+  height: 7px;
+  border-left: 1px solid var(--line);
+  border-right: 1px solid var(--line);
+  background: var(--secondary);
+  overflow: hidden;
 }
+.lexi-overall-progress > span,
+.lexi-budget-progress > span {
+  display: block;
+  height: 100%;
+  width: 0;
+  border-radius: inherit;
+  background: #22c55e;
+  transition: width .18s ease;
+}
+.lexi-overall-progress[data-level="near"] > span,
+.lexi-budget-progress[data-level="near"] > span { background: #f59e0b; }
+.lexi-overall-progress[data-level="over"] > span,
+.lexi-budget-progress[data-level="over"] > span { background: #ef4444; }
 
+.compactSummary .budgetRows {
+  margin: 0;
+  padding: 6px 11px 3px;
+  border-left: 1px solid var(--line);
+  border-right: 1px solid var(--line);
+  background: var(--card);
+}
 .compactSummary .budgetRow {
-  padding: 3px 0;
+  display: grid;
+  grid-template-columns: minmax(0,1fr) auto;
+  gap: 5px 8px;
+  padding: 7px 0 8px;
+  border-top: 1px solid var(--line);
+  font-size: 11px;
+}
+.compactSummary .budgetRow:first-child { border-top: 0; }
+.compactSummary .budgetName { font-weight: 700; }
+.compactSummary .budgetValue { font-weight: 750; }
+.lexi-budget-progress {
+  grid-column: 1 / -1;
+  height: 5px;
+  border-radius: 999px;
+  background: var(--secondary);
+  overflow: hidden;
+}
+.lexi-budget-progress.no-limit { display: none; }
+
+.compactSummary .stayLine {
+  margin: 0;
+  padding: 8px 11px 10px;
+  border: 1px solid var(--line);
+  border-top: 0;
+  border-radius: 0 0 12px 12px;
+  background: var(--card);
+  color: var(--muted);
   font-size: 10.5px;
 }
 
-.lexi-recent-title {
-  margin: 10px 0 3px;
-  padding-top: 8px;
-  border-top: 1px solid var(--line);
-}
-
-.recentCompact {
-  margin-top: 0;
-  padding: 0;
-  border-top: 0;
-}
-
-.txnCompact {
-  min-height: 36px;
-  padding: 4px 0;
-}
-
-/* Cash page. */
+/* ATM. */
 .lexi-cash-card {
   padding: 2px 2px 12px;
   border: 0;
   border-radius: 0;
   background: transparent;
 }
-
-.lexi-cash-card .cashPageTitle {
-  margin: 0 0 2px;
-}
-
-.lexi-cash-card .cashPageTitle h2 {
-  font-size: 16px;
-  font-weight: 800;
-  letter-spacing: -0.01em;
-}
-
-.lexi-cash-card .cashBalanceBlock {
-  margin: 0;
-  padding: 7px 2px 10px;
-  border-bottom: 1px solid var(--line);
-}
-
-.lexi-cash-card .cashLabel {
-  font-size: 10px;
-}
-
-.lexi-cash-card .cashBalance {
-  margin-top: 2px;
-  font-size: 27px;
-  line-height: 1.05;
-  letter-spacing: -0.025em;
-}
-
-.lexi-cash-card .cashBalanceUsd {
-  margin-top: 3px;
-  font-size: 11px;
-}
-
-.lexi-cash-card .cashExplain {
-  margin-top: 3px;
-  font-size: 10px;
-}
-
-.lexi-cash-card .cashControlsRow {
-  gap: 7px;
-  margin-top: 9px;
-}
-
+.lexi-cash-card .cashPageTitle { margin: 0 0 2px; }
+.lexi-cash-card .cashPageTitle h2 { font-size: 16px; font-weight: 800; letter-spacing: -0.01em; }
+.lexi-cash-card .cashBalanceBlock { margin: 0; padding: 7px 2px 10px; border-bottom: 1px solid var(--line); }
+.lexi-cash-card .cashLabel { font-size: 10px; }
+.lexi-cash-card .cashBalance { margin-top: 2px; font-size: 27px; line-height: 1.05; letter-spacing: -0.025em; }
+.lexi-cash-card .cashBalanceUsd { margin-top: 3px; font-size: 11px; }
+.lexi-cash-card .cashExplain { margin-top: 3px; font-size: 10px; }
+.lexi-cash-card .cashControlsRow { gap: 7px; margin-top: 9px; }
 .lexi-cash-card .cashCurrencyField .currencySelect,
-.lexi-cash-card .cashActionButtons .smallBtn {
-  min-height: 36px;
-  height: 36px;
+.lexi-cash-card .cashActionButtons .smallBtn { min-height: 36px; height: 36px; }
+.lexi-cash-card #addCashBtn {
+  border: 1px solid #2563eb;
+  background: #2563eb;
+  color: #fff;
+  box-shadow: 0 4px 12px rgba(37,99,235,.22);
 }
+.lexi-cash-card .cashListHead { margin-top: 15px; padding-top: 10px; border-top: 1px solid var(--line); }
 
-.lexi-cash-card .cashListHead {
-  margin-top: 15px;
-  padding-top: 10px;
-  border-top: 1px solid var(--line);
-}
-
-/* Notes stay local-only and occupy the available viewport rather than
-   creating another page-level scrollbar. */
+/* Notes. */
 .lexi-notes-page {
   padding: 2px 2px 8px;
   flex-direction: column;
   overflow: hidden;
 }
-
 .lexi-notes-head {
   flex: 0 0 auto;
   display: flex;
@@ -454,22 +380,8 @@ body[data-lexi-view="notes"] .lexi-notes-page {
   gap: 10px;
   margin-bottom: 7px;
 }
-
-.lexi-notes-title {
-  margin: 0;
-  font-size: 16px;
-  line-height: 1.15;
-  font-weight: 800;
-  letter-spacing: -0.01em;
-}
-
-.lexi-notes-status {
-  min-height: 14px;
-  color: var(--muted);
-  font-size: 9.5px;
-  text-align: right;
-}
-
+.lexi-notes-title { margin: 0; font-size: 16px; line-height: 1.15; font-weight: 800; letter-spacing: -0.01em; }
+.lexi-notes-status { min-height: 14px; color: var(--muted); font-size: 9.5px; text-align: right; }
 .lexi-notes-tools {
   flex: 0 0 auto;
   display: flex;
@@ -478,11 +390,7 @@ body[data-lexi-view="notes"] .lexi-notes-page {
   padding: 0 0 6px;
   scrollbar-width: none;
 }
-
-.lexi-notes-tools::-webkit-scrollbar {
-  display: none;
-}
-
+.lexi-notes-tools::-webkit-scrollbar { display: none; }
 .lexi-note-tool {
   flex: 0 0 auto;
   min-height: 29px;
@@ -494,7 +402,6 @@ body[data-lexi-view="notes"] .lexi-notes-page {
   font-size: 10.5px;
   font-weight: 700;
 }
-
 .lexi-notes-editor {
   flex: 1 1 auto;
   width: 100%;
@@ -509,24 +416,14 @@ body[data-lexi-view="notes"] .lexi-notes-page {
   color: var(--text);
   padding: 10px;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  font-size: 16px;
+  font-size: 15px;
   line-height: 1.45;
   outline: none;
 }
+.lexi-notes-editor:focus { border-color: var(--muted); }
+.lexi-notes-help { flex: 0 0 auto; margin: 6px 2px 0; color: var(--muted); font-size: 9.5px; line-height: 1.3; }
 
-.lexi-notes-editor:focus {
-  border-color: var(--muted);
-}
-
-.lexi-notes-help {
-  flex: 0 0 auto;
-  margin: 6px 2px 0;
-  color: var(--muted);
-  font-size: 9.5px;
-  line-height: 1.3;
-}
-
-/* Travel-style bottom tab bar, adapted to the existing dark theme. */
+/* Travel-style bottom tabs. */
 .lexi-tabbar {
   position: fixed;
   z-index: 50;
@@ -544,7 +441,6 @@ body[data-lexi-view="notes"] .lexi-notes-page {
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
 }
-
 .lexi-tab {
   min-width: 0;
   min-height: 50px;
@@ -564,7 +460,6 @@ body[data-lexi-view="notes"] .lexi-notes-page {
   transition: background-color .16s ease, color .16s ease, transform .16s ease;
   -webkit-tap-highlight-color: transparent;
 }
-
 .lexi-tab::before {
   content: "";
   width: 19px;
@@ -578,49 +473,28 @@ body[data-lexi-view="notes"] .lexi-notes-page {
   mask-position: center;
   mask-size: contain;
 }
-
-.lexi-tab.active {
-  background: var(--secondary);
-  color: var(--text);
-}
-
-.lexi-tab:active {
-  transform: scale(.96);
-}
+.lexi-tab.active { background: var(--secondary); color: var(--text); }
+.lexi-tab:active { transform: scale(.96); }
 
 .lexi-tab[data-lexi-view="spend"]::before {
   -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M6 3h12a2 2 0 0 1 2 2v16H4V5a2 2 0 0 1 2-2Zm2 5h8M8 12h5M8 16h3' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
   mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M6 3h12a2 2 0 0 1 2 2v16H4V5a2 2 0 0 1 2-2Zm2 5h8M8 12h5M8 16h3' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
 }
-
-.lexi-tab[data-lexi-view="stay"]::before {
+.lexi-tab[data-lexi-view="limit"]::before {
   -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M4 20V10M10 20V4M16 20v-7M22 20H2' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
   mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M4 20V10M10 20V4M16 20v-7M22 20H2' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
 }
-
 .lexi-tab[data-lexi-view="cash"]::before {
   -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M3 7h18v12H3zM7 7V5h10v2M8 13h8M12 10v6' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
   mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M3 7h18v12H3zM7 7V5h10v2M8 13h8M12 10v6' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
 }
-
 .lexi-tab[data-lexi-view="notes"]::before {
   -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M6 3h10l4 4v14H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Zm9 0v5h5M8 12h8M8 16h8' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
   mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M6 3h10l4 4v14H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Zm9 0v5h5M8 12h8M8 16h8' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
 }
 
 @media (max-width: 370px) {
-  .app {
-    padding-left: 9px;
-    padding-right: 9px;
-  }
-
-  .lexi-entry-card {
-    padding-left: 8px;
-    padding-right: 8px;
-  }
-
-  .lexi-tab {
-    min-height: 48px;
-    font-size: 10px;
-  }
+  .app { padding-left: 9px; padding-right: 9px; }
+  .lexi-entry-card { padding-left: 9px; padding-right: 9px; }
+  .lexi-tab { min-height: 48px; font-size: 10px; }
 }
