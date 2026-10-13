@@ -241,7 +241,7 @@
 
         const uiStyleTag = '<link rel="stylesheet" href="./spend-ui.css?v=5">';
         const uiScriptTag = '<script src="./spend-ui.js?v=5">' + closeScript;
-        const refineStyleTag = `<style id="lexiSpendRefineV15">
+        const refineStyleTag = `<style id="lexiSpendRefineV16">
           .lexi-recent-title { font-size: 11px !important; }
           .compactSummary > .lexi-section-title { display:none !important; }
           .lexi-cash-card .cashControlsRow {
@@ -292,7 +292,7 @@
             stroke-linejoin:round;
           }
         </style>`;
-        const refineScriptTag = '<script id="lexiSpendRefineScriptV15">' + `
+        const refineScriptTag = '<script id="lexiSpendRefineScriptV16">' + `
           (() => {
             const icons = {
               bullet: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="7" r="1.4" fill="currentColor" stroke="none"/><circle cx="5" cy="12" r="1.4" fill="currentColor" stroke="none"/><circle cx="5" cy="17" r="1.4" fill="currentColor" stroke="none"/><path d="M10 7h9M10 12h9M10 17h9"/></svg>',
@@ -306,8 +306,9 @@
 
             function setIcon(selector, icon, label) {
               const button = document.querySelector(selector);
-              if (!button) return;
+              if (!button || button.dataset.lexiIcon === icon) return;
               button.innerHTML = icons[icon];
+              button.dataset.lexiIcon = icon;
               button.setAttribute('aria-label', label);
               button.setAttribute('title', label);
             }
@@ -329,7 +330,7 @@
               });
 
               document.querySelectorAll('div,p,span,small,label').forEach(el => {
-                const text = (el.textContent || '').trim().replace(/\s+/g, ' ').toLowerCase();
+                const text = (el.textContent || '').trim().replace(/\\s+/g, ' ').toLowerCase();
                 if (text === 'enter an amount to preview usd' || text === 'enter an amount to preview usd.') {
                   el.classList.add('lexi-hide-atm-preview');
                 }
