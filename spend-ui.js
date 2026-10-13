@@ -14,6 +14,18 @@
     parent.insertBefore(title, parent.firstChild);
   }
 
+  function replacePhrase(root, phrase, replacement) {
+    if (!root) return;
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    const nodes = [];
+    while (walker.nextNode()) nodes.push(walker.currentNode);
+    nodes.forEach(node => {
+      if (node.nodeValue && node.nodeValue.includes(phrase)) {
+        node.nodeValue = node.nodeValue.split(phrase).join(replacement);
+      }
+    });
+  }
+
   function buildNotesPage(anchor) {
     if (document.getElementById('lexiNotesPage')) return document.getElementById('lexiNotesPage');
 
@@ -162,6 +174,8 @@
   }
 
   function updateLimitVisuals() {
+    replacePhrase($('lexiLimitPage'), 'This Stay', 'Current Period');
+
     const total = $('budgetTotal');
     const overall = $('lexiOverallProgress');
     if (total && overall) {
@@ -194,11 +208,72 @@
     });
   }
 
+  function configureLegacyPagerAsTabs(pagerShell, spendPage, cashPage) {
+    const track = pagerShell.querySelector('.pagerTrack');
+    if (track) {
+      track.style.setProperty('display', 'block', 'important');
+      track.style.setProperty('width', '100%', 'important');
+      track.style.setProperty('transform', 'none', 'important');
+      track.style.setProperty('transition', 'none', 'important');
+      track.style.setProperty('touch-action', 'pan-y', 'important');
+    }
+
+    [spendPage, cashPage].forEach(page => {
+      if (!page) return;
+      page.style.setProperty('width', '100%', 'important');
+      page.style.setProperty('max-width', '100%', 'important');
+      page.style.setProperty('flex', '0 0 100%', 'important');
+      page.style.setProperty('touch-action', 'pan-y', 'important');
+    });
+
+    const pageNav = document.querySelector('.pageNav');
+    if (pageNav) pageNav.remove();
+
+    let startX = null;
+    let startY = null;
+    let blockingHorizontal = false;
+
+    pagerShell.addEventListener('touchstart', event => {
+      const touch = event.touches?.[0];
+      if (!touch) return;
+      startX = touch.clientX;
+      startY = touch.clientY;
+      blockingHorizontal = false;
+    }, { capture: true, passive: true });
+
+    pagerShell.addEventListener('touchmove', event => {
+      if (startX === null || startY === null) return;
+      const touch = event.touches?.[0];
+      if (!touch) return;
+      const dx = touch.clientX - startX;
+      const dy = touch.clientY - startY;
+      if (!blockingHorizontal && Math.abs(dx) >= 8 && Math.abs(dx) > Math.abs(dy)) {
+        blockingHorizontal = true;
+      }
+      if (!blockingHorizontal) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+    }, { capture: true, passive: false });
+
+    const endGesture = event => {
+      if (blockingHorizontal) event.stopImmediatePropagation();
+      startX = null;
+      startY = null;
+      blockingHorizontal = false;
+    };
+
+    pagerShell.addEventListener('touchend', endGesture, { capture: true, passive: true });
+    pagerShell.addEventListener('touchcancel', endGesture, { capture: true, passive: true });
+  }
+
+  function setLegacyPaneVisibility(view, spendPage, cashPage) {
+    if (spendPage) spendPage.style.setProperty('display', view === 'spend' ? 'block' : 'none', 'important');
+    if (cashPage) cashPage.style.setProperty('display', view === 'cash' ? 'block' : 'none', 'important');
+  }
+
   function init() {
     const pagerShell = $('pagerShell');
-    const dotSpend = $('dotSpend');
-    const dotCash = $('dotCash');
-    if (!pagerShell || !dotSpend || !dotCash) return;
+    if (!pagerShell) return;
 
     const title = document.querySelector('.titleLine h1');
     if (title) title.innerHTML = 'Lexi Spend <span class="lexi-title-icon" aria-hidden="true">💳</span>';
@@ -244,18 +319,16 @@
       if (titleRow && balance) titleRow.insertAdjacentElement('afterend', balance);
     }
 
+    const spendPage = entryCard?.closest('.page') || null;
+    const cashPage = cashCard?.closest('.page') || null;
+    configureLegacyPagerAsTabs(pagerShell, spendPage, cashPage);
+
     const stayMini = $('stayMini');
     buildLimitPage(pagerShell, stayMini, summaryCard);
     buildNotesPage($('lexiLimitPage'));
 
     const tabbar = buildTabbar();
     const tabs = Array.from(tabbar.querySelectorAll('[data-lexi-view]'));
-
-    pagerShell.addEventListener('touchend', () => {
-      const lockedView = document.body.dataset.lexiView;
-      if (lockedView === 'spend' && dotCash.classList.contains('active')) dotSpend.click();
-      else if (lockedView === 'cash' && dotSpend.classList.contains('active')) dotCash.click();
-    }, { passive: true });
 
     function persistView(view) {
       try { localStorage.setItem(VIEW_KEY, view); } catch (_) {}
@@ -269,9 +342,8 @@
     }
     function showView(requestedView) {
       const view = VALID_VIEWS.includes(requestedView) ? requestedView : 'spend';
-      if (view === 'spend') dotSpend.click();
-      else if (view === 'cash') dotCash.click();
       document.body.dataset.lexiView = view;
+      setLegacyPaneVisibility(view, spendPage, cashPage);
       updateTabs(view);
       persistView(view);
       if (view === 'limit') updateLimitVisuals();
@@ -282,8 +354,10 @@
     const budgetObserver = new MutationObserver(updateLimitVisuals);
     const budgetRows = $('budgetRows');
     const budgetTotal = $('budgetTotal');
+    const limitPage = $('lexiLimitPage');
     if (budgetRows) budgetObserver.observe(budgetRows, { childList: true, subtree: true, characterData: true });
     if (budgetTotal) budgetObserver.observe(budgetTotal, { childList: true, subtree: true, characterData: true });
+    if (limitPage) budgetObserver.observe(limitPage, { childList: true, subtree: true, characterData: true });
     updateLimitVisuals();
 
     let initialView = 'spend';
