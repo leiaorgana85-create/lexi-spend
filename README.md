@@ -13,15 +13,26 @@ Production baseline audited on 2026-10-12:
 - Spreadsheet timezone: `Asia/Bangkok`
 - Apps Script project timezone: `America/New_York` (intentional legacy/fallback setting; do not change casually)
 
-Read-only architecture proof completed on 2026-10-13:
+API migration proof completed on 2026-10-13:
 - New standalone Apps Script project: `Lexi Spend API`
 - Linked to a standard Google Cloud project
 - Google Apps Script API enabled
 - Google Drive API enabled
 - API Executable deployed with access restricted to the owner
-- GitHub Pages frontend successfully obtained Google OAuth authorization and called `apiProbe()` through `scripts.run`
-- `apiProbe()` successfully read the existing `Spend Log` and returned timezone `Asia/Bangkok`
-- No Sheet write was performed by the proof
+- GitHub Pages successfully obtained Google OAuth authorization and called the API Executable through `scripts.run`
+- Initial read-only `apiProbe()` successfully read the existing `Spend Log` and returned timezone `Asia/Bangkok`
+- Production `Code.gs` was then copied into `Lexi Spend API`
+- `authorizeDriveAccess` completed successfully against the existing receipt folder
+- `getAppState` completed successfully in the API project
+- The GitHub test page then called the real deployed `getAppState` successfully and returned app version `13.12.21`, Thailand / THB, and the Bangkok stay
+- No spending, cash, stay, or receipt record was changed by those proof tests
+
+Full frontend staging on 2026-10-13:
+- The existing Spend UI was preserved rather than redesigned
+- Existing `google.script.run` call sites are routed through a GitHub-side compatibility bridge to the API Executable
+- PWA manifest and service worker are present
+- Same-origin app shell files use network-first caching with offline fallback; Google/OAuth/API traffic is not service-worker cached
+- Current stage: owner visual/read-only regression test, followed by controlled write/delete/receipt tests
 
 ## Target architecture
 
@@ -54,7 +65,7 @@ The current frontend uses these backend functions:
 - `addCashWithdrawal`
 - `deleteCashWithdrawal`
 
-The migration should preserve existing server-side business logic wherever practical and replace `google.script.run` with a small frontend API abstraction.
+The migration preserves existing server-side business logic and uses a small frontend API compatibility layer in place of the Apps Script-hosted-page runtime.
 
 ## Sheet contracts
 
@@ -82,7 +93,7 @@ The `Stays` tab owns stay names and dates. The app reads stay configuration from
 - Do not expose private Google Sheet IDs, receipt-folder IDs, OAuth client secrets, access tokens, or other credentials in this public repository.
 - Do not redesign the Sheet merely to support the new frontend.
 - Preserve transaction-date semantics: the normal frontend sends an explicit local `YYYY-MM-DD` date; the Apps Script timezone is only a fallback for server-side paths.
-- Test authentication in an installed iPhone PWA before connecting all write operations.
+- Test authentication in an installed iPhone PWA before cutover.
 - Test reads first, then writes, then receipt handling, then deletion/reconciliation paths.
 
 ## Regression checklist before cutover
