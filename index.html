@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <title>Lexi Spend API Test</title>
+  <title>Lexi Spend Backend Test</title>
   <meta name="theme-color" content="#111111">
   <style>
     :root { color-scheme: dark; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
@@ -22,8 +22,8 @@
 <body>
   <main>
     <h1>Lexi Spend</h1>
-    <p>Read-only API connection test. This page only calls <code>apiProbe()</code>; it does not write to the Spend Log.</p>
-    <button id="connect" type="button">Connect Google & Run Test</button>
+    <p>Read-only real-backend test. This calls <code>getAppState()</code> from the copied Spend Log backend. It does not add, edit, or delete anything.</p>
+    <button id="connect" type="button">Connect Google & Test Real Backend</button>
     <div id="status">Ready.</div>
   </main>
 
@@ -33,28 +33,38 @@
 
       const CLIENT_ID = '746921963687-206tvg2gn6mo74gb1ej07sck6lftoe62.apps.googleusercontent.com';
       const DEPLOYMENT_ID = 'AKfycbzU-ORThi93pC00cw40FdsYK33rhaateLlPQcwlrfRwo_4pp1sYJqKOVfx5C41Rk1TA';
-      const SCRIPT_SCOPE = 'https://www.googleapis.com/auth/spreadsheets';
+      const SCOPES = [
+        'https://www.googleapis.com/auth/spreadsheets',
+        'https://www.googleapis.com/auth/drive',
+        'https://www.googleapis.com/auth/script.external_request'
+      ].join(' ');
       const RUN_URL = `https://script.googleapis.com/v1/scripts/${DEPLOYMENT_ID}:run`;
 
       const button = document.getElementById('connect');
       const status = document.getElementById('status');
       let tokenClient = null;
 
+      function localDate() {
+        const d = new Date();
+        const y = d.getFullYear();
+        const m = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        return `${y}-${m}-${day}`;
+      }
+
       function setStatus(message, isError = false) {
         status.textContent = message;
         status.className = isError ? 'err' : '';
       }
 
-      async function runProbe(accessToken) {
-        setStatus('Connected. Calling apiProbe()…');
-
+      async function callScript(accessToken, functionName, parameters = []) {
         const response = await fetch(RUN_URL, {
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${accessToken}`,
             'Content-Type': 'application/json'
           },
-          body: JSON.stringify({ function: 'apiProbe', parameters: [] })
+          body: JSON.stringify({ function: functionName, parameters })
         });
 
         const payload = await response.json().catch(() => ({}));
@@ -68,17 +78,31 @@
           throw new Error(details?.errorMessage || payload.error.message || 'Apps Script execution failed.');
         }
 
-        const result = payload.response?.result;
-        if (!result?.ok) {
-          throw new Error('apiProbe() returned an unexpected result.');
+        return payload.response?.result;
+      }
+
+      async function runRealBackendTest(accessToken) {
+        const today = localDate();
+        setStatus(`Connected. Calling getAppState(${today}, THB)…`);
+
+        const result = await callScript(accessToken, 'getAppState', [today, 'THB']);
+
+        if (!result || !result.appVersion) {
+          throw new Error('getAppState() returned an unexpected result.');
         }
 
         status.className = 'ok';
         status.textContent = [
-          'API TEST PASSED ✓',
-          `Spreadsheet: ${result.spreadsheetTitle}`,
-          `Timezone: ${result.spreadsheetTimeZone}`,
-          `Checked: ${result.checkedAt}`
+          'REAL BACKEND TEST PASSED ✓',
+          `App version: ${result.appVersion}`,
+          `Country: ${result.country || '—'}`,
+          `Currency: ${result.currency || '—'}`,
+          `Stay: ${result.stayName || '—'}`,
+          `Stay dates: ${result.stayStart || '—'} → ${result.stayEnd || '—'}`,
+          `Stay status: ${result.stayStatus || '—'}`,
+          `Recent transactions loaded: ${Array.isArray(result.recent) ? result.recent.length : '—'}`,
+          `Cash wallet: ${result.cash?.currency || '—'}`,
+          `Browser local date sent: ${today}`
         ].join('\n');
       }
 
@@ -89,7 +113,7 @@
 
         tokenClient = google.accounts.oauth2.initTokenClient({
           client_id: CLIENT_ID,
-          scope: SCRIPT_SCOPE,
+          scope: SCOPES,
           callback: async tokenResponse => {
             if (tokenResponse.error) {
               setStatus(`Google authorization failed: ${tokenResponse.error}`, true);
@@ -98,9 +122,9 @@
             }
 
             try {
-              await runProbe(tokenResponse.access_token);
+              await runRealBackendTest(tokenResponse.access_token);
             } catch (error) {
-              setStatus(`API test failed: ${error.message}`, true);
+              setStatus(`Backend test failed: ${error.message}`, true);
             } finally {
               button.disabled = false;
             }
