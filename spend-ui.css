@@ -1,4 +1,4 @@
-/* Lexi Spend UI shell — keeps existing accounting behavior intact. */
+/* Lexi Spend UI shell — compact swipe-first layout. */
 
 body {
   min-height: 100dvh;
@@ -6,13 +6,13 @@ body {
 
 .app {
   max-width: 600px;
-  padding: calc(13px + env(safe-area-inset-top)) 12px calc(86px + env(safe-area-inset-bottom));
+  padding: calc(9px + env(safe-area-inset-top)) 10px calc(28px + env(safe-area-inset-bottom));
 }
 
 .top {
-  min-height: 42px;
-  margin: 0 -2px 7px;
-  padding: 0 2px 9px;
+  min-height: 34px;
+  margin: 0 -1px 3px;
+  padding: 0 1px 6px;
   border-bottom: 1px solid var(--line);
 }
 
@@ -21,34 +21,52 @@ body {
 }
 
 h1 {
-  font-size: 20px;
-  line-height: 1.05;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 16px;
+  line-height: 1;
   font-weight: 800;
-  letter-spacing: -0.02em;
+  letter-spacing: -0.015em;
+}
+
+.lexi-title-icon {
+  font-size: 14px;
+  line-height: 1;
 }
 
 .gear {
-  width: 38px;
-  height: 38px;
+  width: 31px;
+  height: 31px;
   border: 0;
-  border-radius: 10px;
+  border-radius: 8px;
   background: transparent;
   color: var(--text);
-  font-size: 22px;
+  font-size: 18px;
   padding: 0;
 }
 
-/* The old dots are retained as internal pager controls for compatibility,
-   but visible navigation is now the bottom tab bar. */
+/* Swipe remains the primary navigation. Three small dots expose the
+   current page without turning navigation into a permanent menu. */
 .pageNav {
-  display: none !important;
+  display: flex !important;
+  justify-content: center;
+  align-items: center;
+  gap: 6px;
+  margin: 2px 0 6px;
+}
+
+.pageNav .dot {
+  width: 6px;
+  height: 6px;
+  cursor: pointer;
 }
 
 .stayMini {
-  margin: 2px 2px 10px;
+  margin: -1px 2px 6px;
   text-align: left;
-  font-size: 10.5px;
-  line-height: 1.35;
+  font-size: 9.5px;
+  line-height: 1.3;
 }
 
 body[data-lexi-view="cash"] #stayMini,
@@ -57,34 +75,182 @@ body[data-lexi-view="notes"] #stayMini {
 }
 
 .lexi-section-title {
-  margin: 0 0 9px;
-  font-size: 14px;
+  margin: 0 0 6px;
+  font-size: 12.5px;
   line-height: 1.2;
   font-weight: 800;
-  letter-spacing: -0.01em;
+  letter-spacing: -0.005em;
   color: var(--text);
 }
 
+/* Entry form: intentionally tighter than the prior version. */
 .lexi-entry-card {
-  padding: 12px;
-  border-radius: 15px;
+  padding: 8px 9px;
+  margin-bottom: 5px;
+  border-radius: 13px;
 }
 
-.compactSummary {
+.lexi-entry-card > .lexi-section-title {
+  display: none;
+}
+
+.lexi-entry-card .row {
+  gap: 6px;
+  margin-top: 5px;
+}
+
+.lexi-entry-card #expenseForm > .row:first-child {
+  margin-top: 0;
+}
+
+.lexi-entry-card label,
+.lexi-entry-card .paymentLabel {
+  margin: 0 0 3px 1px;
+  font-size: 10.5px;
+}
+
+.lexi-entry-card input:not([type="file"]),
+.lexi-entry-card select {
+  min-height: 34px;
+  height: 34px;
+  border-radius: 9px;
+  padding: 4px 8px;
+}
+
+.lexi-entry-card #merchant {
+  font-size: 16px;
+}
+
+.lexi-entry-card #category,
+.lexi-entry-card .currencyPaymentRow .currencySelect {
+  min-height: 34px;
+  height: 34px;
+  padding-top: 4px;
+  padding-bottom: 4px;
+  font-size: 13px;
+}
+
+.lexi-entry-card .currencyPaymentRow {
+  grid-template-columns: minmax(0,.8fr) minmax(0,1.2fr);
+  gap: 6px;
+  margin-top: 5px;
+}
+
+.lexi-entry-card .currencyPaymentRow .payBtn {
+  min-height: 34px;
+  height: 34px;
+  border-radius: 9px;
+  padding: 0 5px;
+  font-size: 12px;
+}
+
+.lexi-entry-card .amountFull {
+  margin-top: 5px;
+}
+
+.lexi-entry-card .amountFull .amountWrap input {
+  min-height: 36px;
+  height: 36px;
+  padding: 3px 42px 3px 8px;
+  font-size: 19px;
+}
+
+.lexi-entry-card .clearField {
+  width: 27px;
+  height: 27px;
+  right: 5px;
+  font-size: 15px;
+}
+
+.lexi-entry-card .usdPreview {
+  min-height: 14px;
+  margin: 3px 1px 0;
+  font-size: 10.5px;
+}
+
+.lexi-entry-card .dateBar {
+  gap: 7px;
+  margin-top: 5px;
+  padding: 5px 8px;
+  border-radius: 9px;
+}
+
+.lexi-entry-card .dateMain {
+  font-size: 12.5px;
+}
+
+.lexi-entry-card .dateSub {
+  font-size: 9.5px;
+}
+
+.lexi-entry-card .dateChangeWrap {
+  min-width: 58px;
+  min-height: 29px;
+}
+
+.lexi-entry-card .changeDate {
+  font-size: 11px;
+}
+
+.lexi-entry-card .noteToggle {
+  padding: 6px 1px 2px;
+  font-size: 11.5px;
+}
+
+.lexi-entry-card #noteBox {
+  margin-top: 2px;
+}
+
+.lexi-entry-card #noteBox textarea {
+  min-height: 56px;
+  padding: 7px 8px;
+  border-radius: 9px;
+  font-size: 16px;
+  line-height: 1.35;
+}
+
+.lexi-entry-card .saveActionRow {
+  grid-template-columns: minmax(0,1fr) 36px;
+  gap: 6px;
+  margin-top: 5px;
+}
+
+.lexi-entry-card .saveActionRow .primary {
+  min-height: 36px;
+  height: 36px;
+  border-radius: 9px;
+  font-size: 14px;
+}
+
+.lexi-entry-card .receiptIconBtn {
+  width: 36px;
+  height: 36px;
+  min-height: 36px;
+  border-radius: 9px;
+  font-size: 17px;
+}
+
+.lexi-entry-card .status {
   margin-top: 4px;
-  padding: 9px 2px 16px;
+  font-size: 10.5px;
+}
+
+/* Spend summary: preserve budget logic/colors while reducing vertical bulk. */
+.compactSummary {
+  margin-top: 1px;
+  padding: 6px 2px 10px;
   border: 0;
   border-radius: 0;
   background: transparent;
 }
 
 .compactSummary > .lexi-section-title {
-  margin: 0 2px 7px;
+  margin: 0 2px 5px;
 }
 
 .compactSummary .summaryGrid {
   gap: 0;
-  margin: 0 0 8px;
+  margin: 0 0 5px;
   border-top: 1px solid var(--line);
   border-bottom: 1px solid var(--line);
 }
@@ -93,7 +259,7 @@ body[data-lexi-view="notes"] #stayMini {
   border: 0;
   border-radius: 0;
   background: transparent;
-  padding: 9px 10px;
+  padding: 6px 8px;
 }
 
 .compactSummary .summaryMetric + .summaryMetric {
@@ -101,16 +267,20 @@ body[data-lexi-view="notes"] #stayMini {
 }
 
 .compactSummary .summaryMetric .k {
-  font-size: 10.5px;
+  font-size: 9.5px;
 }
 
 .compactSummary .summaryMetric .v {
-  font-size: 17px;
+  font-size: 15px;
+}
+
+.compactSummary .summaryRange {
+  font-size: 8.5px;
 }
 
 .compactSummary .budgetTitle {
-  margin: 9px 2px 0;
-  padding-top: 9px;
+  margin: 6px 2px 0;
+  padding-top: 6px;
 }
 
 .compactSummary #budgetEquivalent,
@@ -120,9 +290,14 @@ body[data-lexi-view="notes"] #stayMini {
   margin-right: 2px;
 }
 
+.compactSummary .budgetRow {
+  padding: 2px 0;
+  font-size: 10.5px;
+}
+
 .lexi-recent-title {
-  margin: 12px 2px 5px;
-  padding-top: 10px;
+  margin: 8px 2px 3px;
+  padding-top: 7px;
   border-top: 1px solid var(--line);
 }
 
@@ -133,68 +308,76 @@ body[data-lexi-view="notes"] #stayMini {
 }
 
 .txnCompact {
-  min-height: 40px;
-  padding: 6px 0;
+  min-height: 36px;
+  padding: 4px 0;
 }
 
-/* Cash is a first-class screen rather than page 2 of a form. */
+/* Cash stays visually distinct, but compact. */
 .lexi-cash-card {
-  padding: 4px 2px 18px;
+  padding: 2px 2px 12px;
   border: 0;
   border-radius: 0;
   background: transparent;
 }
 
 .lexi-cash-card .cashPageTitle {
-  margin: 0 0 4px;
+  margin: 0 0 2px;
 }
 
 .lexi-cash-card .cashPageTitle h2 {
-  font-size: 18px;
+  font-size: 16px;
   font-weight: 800;
   letter-spacing: -0.01em;
 }
 
 .lexi-cash-card .cashBalanceBlock {
   margin: 0;
-  padding: 10px 2px 15px;
+  padding: 7px 2px 10px;
   border-bottom: 1px solid var(--line);
 }
 
 .lexi-cash-card .cashLabel {
-  font-size: 11px;
+  font-size: 10px;
 }
 
 .lexi-cash-card .cashBalance {
-  margin-top: 3px;
-  font-size: 30px;
+  margin-top: 2px;
+  font-size: 27px;
   line-height: 1.05;
   letter-spacing: -0.025em;
 }
 
 .lexi-cash-card .cashBalanceUsd {
-  margin-top: 4px;
-  font-size: 12px;
+  margin-top: 3px;
+  font-size: 11px;
 }
 
 .lexi-cash-card .cashExplain {
-  margin-top: 5px;
+  margin-top: 3px;
+  font-size: 10px;
 }
 
 .lexi-cash-card .cashControlsRow {
-  margin-top: 13px;
+  gap: 7px;
+  margin-top: 9px;
+}
+
+.lexi-cash-card .cashCurrencyField .currencySelect,
+.lexi-cash-card .cashActionButtons .smallBtn {
+  min-height: 36px;
+  height: 36px;
 }
 
 .lexi-cash-card .cashListHead {
-  margin-top: 22px;
-  padding-top: 14px;
+  margin-top: 15px;
+  padding-top: 10px;
   border-top: 1px solid var(--line);
 }
 
-/* Notes: deliberately plain text, with lightweight line-format helpers. */
+/* Notes remain local-only and deliberately plain. */
 .lexi-notes-page {
   display: none;
-  padding: 3px 2px 24px;
+  padding: 2px 2px 18px;
 }
 
 body[data-lexi-view="notes"] #pagerShell {
@@ -210,29 +393,29 @@ body[data-lexi-view="notes"] .lexi-notes-page {
   align-items: baseline;
   justify-content: space-between;
   gap: 10px;
-  margin-bottom: 10px;
+  margin-bottom: 7px;
 }
 
 .lexi-notes-title {
   margin: 0;
-  font-size: 18px;
+  font-size: 16px;
   line-height: 1.15;
   font-weight: 800;
   letter-spacing: -0.01em;
 }
 
 .lexi-notes-status {
-  min-height: 15px;
+  min-height: 14px;
   color: var(--muted);
-  font-size: 10px;
+  font-size: 9.5px;
   text-align: right;
 }
 
 .lexi-notes-tools {
   display: flex;
-  gap: 6px;
+  gap: 5px;
   overflow-x: auto;
-  padding: 0 0 8px;
+  padding: 0 0 6px;
   scrollbar-width: none;
 }
 
@@ -242,28 +425,28 @@ body[data-lexi-view="notes"] .lexi-notes-page {
 
 .lexi-note-tool {
   flex: 0 0 auto;
-  min-height: 31px;
+  min-height: 29px;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--card);
   color: var(--text);
-  padding: 5px 9px;
-  font-size: 11px;
+  padding: 4px 8px;
+  font-size: 10.5px;
   font-weight: 700;
 }
 
 .lexi-notes-editor {
   width: 100%;
-  min-height: min(58dvh, 520px);
+  min-height: min(64dvh, 560px);
   resize: vertical;
   border: 1px solid var(--line);
-  border-radius: 12px;
+  border-radius: 11px;
   background: var(--field);
   color: var(--text);
-  padding: 12px;
+  padding: 10px;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   font-size: 16px;
-  line-height: 1.48;
+  line-height: 1.45;
   outline: none;
 }
 
@@ -272,51 +455,20 @@ body[data-lexi-view="notes"] .lexi-notes-page {
 }
 
 .lexi-notes-help {
-  margin: 7px 2px 0;
+  margin: 6px 2px 0;
   color: var(--muted);
-  font-size: 10px;
-  line-height: 1.35;
-}
-
-/* Shared Travel-style bottom navigation. */
-.lexi-tabbar {
-  position: fixed;
-  z-index: 40;
-  left: 50%;
-  bottom: 0;
-  transform: translateX(-50%);
-  width: min(600px, 100%);
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  border-top: 1px solid var(--line);
-  background: var(--card);
-  background: color-mix(in srgb, var(--card) 96%, transparent);
-  padding: 7px 6px calc(7px + env(safe-area-inset-bottom));
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
-}
-
-.lexi-tab {
-  min-height: 38px;
-  border: 0;
-  background: transparent;
-  color: var(--muted);
-  padding: 8px 4px;
-  font-size: 13px;
-  font-weight: 750;
-}
-
-.lexi-tab.active {
-  color: var(--text);
+  font-size: 9.5px;
+  line-height: 1.3;
 }
 
 @media (max-width: 370px) {
-  .lexi-entry-card {
-    padding-left: 10px;
-    padding-right: 10px;
+  .app {
+    padding-left: 9px;
+    padding-right: 9px;
   }
 
-  .lexi-tab {
-    font-size: 12px;
+  .lexi-entry-card {
+    padding-left: 8px;
+    padding-right: 8px;
   }
 }
