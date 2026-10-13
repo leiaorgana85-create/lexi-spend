@@ -8,6 +8,7 @@
     DB_STORE: 'kv',
     DB_KEY: 'apiCode',
     timeoutMs: 120000,
+    readyTimeoutMs: 45000,
     frame: null,
     target: null,
     origin: '',
@@ -17,7 +18,8 @@
     pending: new Map(),
     nextId: 1,
     codePromise: null,
-    codeResolve: null
+    codeResolve: null,
+    warmStarted: false
   };
 
   B.getCookie = () => {
@@ -160,7 +162,8 @@
 
   B.ensureFrame = () => {
     if (B.frame && B.frame.isConnected) return B.frame;
-    if (!document.body) throw new Error('Lexi Spend is still loading.');
+    if (!document.body) return null;
+
     const f = document.createElement('iframe');
     f.id = 'lexiSpendApiBridge';
     f.title = 'Lexi Spend private API bridge';
@@ -178,31 +181,56 @@
     B.target = null;
     B.origin = '';
     B.ready = false;
+    B.readyPromise = null;
+    B.readyResolve = null;
     return B.ensureFrame();
+  };
+
+  B.warmBridge = () => {
+    if (B.warmStarted) return;
+    B.warmStarted = true;
+
+    const start = () => {
+      if (B.frame && B.frame.isConnected) return true;
+      if (!document.body) return false;
+      B.ensureFrame();
+      return true;
+    };
+
+    if (start()) return;
+
+    const observer = new MutationObserver(() => {
+      if (start()) observer.disconnect();
+    });
+    observer.observe(document.documentElement, { childList: true, subtree: true });
+
+    document.addEventListener('DOMContentLoaded', () => {
+      start();
+      observer.disconnect();
+    }, { once: true });
   };
 
   B.waitReady = () => {
     if (B.ready && B.target && B.origin) return Promise.resolve();
     if (B.readyPromise) return B.readyPromise;
 
+    B.warmBridge();
     B.ensureFrame();
+
     B.readyPromise = new Promise((resolve, reject) => {
-      B.readyResolve = resolve;
+      const timer = setTimeout(() => {
+        if (B.ready) return;
+        B.readyPromise = null;
+        B.readyResolve = null;
+        reject(new Error('Could not connect to the Lexi Spend backend.'));
+      }, B.readyTimeoutMs);
 
-      setTimeout(() => {
-        if (!B.ready) {
-          try { B.recreateFrame(); } catch (_) {}
-        }
-      }, 7000);
-
-      setTimeout(() => {
-        if (!B.ready) {
-          B.readyPromise = null;
-          B.readyResolve = null;
-          reject(new Error('Could not connect to the Lexi Spend backend.'));
-        }
-      }, 20000);
+      B.readyResolve = () => {
+        clearTimeout(timer);
+        resolve();
+      };
     });
+
     return B.readyPromise;
   };
 })();
