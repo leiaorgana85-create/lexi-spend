@@ -1,8 +1,13 @@
-const CACHE = 'lexi-spend-v2';
+const CACHE = 'lexi-spend-v3';
 const SHELL = [
   './',
   './index.html',
   './manifest.webmanifest',
+  './bridge-state.js',
+  './bridge-auth.js',
+  './bridge-call.js',
+  './bridge-runtime.js',
+  './bridge-settings.js',
   './payload/part1a.txt',
   './payload/part1b.txt',
   './payload/part2a.txt',
