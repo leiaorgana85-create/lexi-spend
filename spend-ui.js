@@ -98,13 +98,40 @@
           white-space:normal;
         }
         .lexi-notes-check-row input[type="checkbox"] {
-          flex:0 0 auto;
-          width:14px;
-          height:14px;
-          margin:4px 0 0;
-          accent-color:#2563eb;
+          -webkit-appearance:none !important;
+          appearance:none !important;
+          box-sizing:border-box !important;
+          flex:0 0 13px !important;
+          width:13px !important;
+          height:13px !important;
+          min-width:13px !important;
+          min-height:13px !important;
+          margin:4px 0 0 !important;
+          padding:0 !important;
+          border:1.5px solid var(--muted) !important;
+          border-radius:3px !important;
+          background:transparent !important;
+          display:grid !important;
+          place-content:center !important;
         }
-        .lexi-notes-check-label { min-width:0; white-space:pre-wrap; overflow-wrap:anywhere; }
+        .lexi-notes-check-row input[type="checkbox"]:checked {
+          background:#2563eb !important;
+          border-color:#2563eb !important;
+        }
+        .lexi-notes-check-row input[type="checkbox"]:checked::after {
+          content:'';
+          width:6px;
+          height:3px;
+          border-left:1.5px solid #fff;
+          border-bottom:1.5px solid #fff;
+          transform:translateY(-1px) rotate(-45deg);
+        }
+        .lexi-notes-check-label {
+          min-width:0;
+          line-height:1.45;
+          white-space:pre-wrap;
+          overflow-wrap:anywhere;
+        }
         .lexi-notes-check-indent { flex:0 0 auto; white-space:pre; }
       `;
       document.head.appendChild(style);
@@ -668,9 +695,6 @@
     const tabbar = buildTabbar();
     const tabs = Array.from(tabbar.querySelectorAll('[data-lexi-view]'));
 
-    function persistView(view) {
-      try { localStorage.setItem(VIEW_KEY, view); } catch (_) {}
-    }
     function updateTabs(view) {
       tabs.forEach(tab => {
         const active = tab.dataset.lexiView === view;
@@ -683,7 +707,6 @@
       document.body.dataset.lexiView = view;
       setLegacyPaneVisibility(view, spendPage, cashPage);
       updateTabs(view);
-      persistView(view);
       if (view === 'limit') updateLimitVisuals();
     }
 
@@ -698,12 +721,7 @@
     if (limitPage) budgetObserver.observe(limitPage, { childList: true, subtree: true, characterData: true });
     updateLimitVisuals();
 
-    let initialView = 'spend';
-    try {
-      const saved = localStorage.getItem(VIEW_KEY);
-      if (VALID_VIEWS.includes(saved)) initialView = saved;
-    } catch (_) {}
-    showView(initialView);
+    showView('spend');
   }
 
   if (document.readyState === 'loading') {
