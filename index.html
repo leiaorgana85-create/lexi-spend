@@ -230,8 +230,17 @@
 
         html = html.replace(startupLiveRefresh, startupLiveRefreshIdle);
 
-        const uiStyleTag = '<link rel="stylesheet" href="./spend-ui.css?v=4">';
-        const uiScriptTag = '<script src="./spend-ui.js?v=4">' + closeScript;
+        const recentThreeMarker = 'rows.slice(0, 3).forEach(x => {';
+        if (!html.includes(recentThreeMarker)) {
+          throw new Error('Lexi Spend recent-transaction marker was not found.');
+        }
+        html = html.replace(
+          recentThreeMarker,
+          'rows.slice(0, 5).forEach(x => {'
+        );
+
+        const uiStyleTag = '<link rel="stylesheet" href="./spend-ui.css?v=5">';
+        const uiScriptTag = '<script src="./spend-ui.js?v=5">' + closeScript;
 
         if (!html.includes('</head>') || !html.includes('</body>')) {
           throw new Error('Lexi Spend UI shell markers were not found.');
