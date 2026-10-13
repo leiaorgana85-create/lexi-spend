@@ -8,6 +8,8 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Lexi Spend">
+  <link rel="preconnect" href="https://script.google.com">
+  <link rel="preconnect" href="https://script.googleusercontent.com">
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="apple-touch-icon" sizes="180x180" href="https://leiaorgana85-create.github.io/lexi-assets/spend-logo.png">
   <style>
@@ -23,6 +25,12 @@
   <div id="loader"><strong>Lexi Spend</strong><span>Loading…</span></div>
   <script>
     (async () => {
+      const backendUrl = 'https://script.google.com/macros/s/AKfycby084l1Rupc838tdinecb2J5NCdOurkIa-smKFJqhypYINd_5walm15NLMWH7vSPWrA/exec';
+      fetch(`${backendUrl}?lexiWarm=${Date.now()}`, {
+        mode: 'no-cors',
+        cache: 'no-store'
+      }).catch(() => {});
+
       const files = [
         'payload/part1a.txt','payload/part1b.txt','payload/part2a.txt','payload/part2b.txt',
         'payload/part3aa.txt','payload/part3ab.txt','payload/part3b.txt','payload/part4a.txt',
@@ -54,6 +62,11 @@
           '<script src="./bridge-settings.js">' + closeScript
         ].join('\n');
         html = html.slice(0, oauthStart) + bridgeTags + '\n\n  ' + html.slice(styleStart);
+
+        html = html.replace(
+          "setStatus('Refreshing live totals…');",
+          "setStatus('');"
+        );
 
         document.open();
         document.write(html);
