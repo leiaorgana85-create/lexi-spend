@@ -93,15 +93,15 @@
         .lexi-notes-check-row {
           display:flex;
           align-items:flex-start;
-          gap:7px;
+          gap:6px;
           min-height:1.45em;
           white-space:normal;
         }
         .lexi-notes-check-row input[type="checkbox"] {
           flex:0 0 auto;
-          width:18px;
-          height:18px;
-          margin:1px 0 0;
+          width:14px;
+          height:14px;
+          margin:4px 0 0;
           accent-color:#2563eb;
         }
         .lexi-notes-check-label { min-width:0; white-space:pre-wrap; overflow-wrap:anywhere; }
@@ -244,6 +244,36 @@
     }
     section.querySelector('[data-note-undo]').addEventListener('click', () => historyCommand('undo'));
     section.querySelector('[data-note-redo]').addEventListener('click', () => historyCommand('redo'));
+
+    editor.dataset.lexiAutoContinue = '1';
+    editor.addEventListener('keydown', event => {
+      if (event.key !== 'Enter' || event.shiftKey || event.isComposing) return;
+
+      const start = editor.selectionStart;
+      const end = editor.selectionEnd;
+      const value = editor.value;
+      const lineStart = value.lastIndexOf('\n', Math.max(0, start - 1)) + 1;
+      const lineBeforeCaret = value.slice(lineStart, start);
+
+      const check = lineBeforeCaret.match(/^(\s*)\[(?: |x|X)\]\s?(.*)$/);
+      const bullet = lineBeforeCaret.match(/^(\s*)•\s?(.*)$/);
+      const numbered = lineBeforeCaret.match(/^(\s*)(\d+)\.\s?(.*)$/);
+
+      let nextPrefix = '';
+      if (check) {
+        nextPrefix = `${check[1]}[ ] `;
+      } else if (bullet) {
+        nextPrefix = `${bullet[1]}• `;
+      } else if (numbered) {
+        nextPrefix = `${numbered[1]}${Number(numbered[2]) + 1}. `;
+      } else {
+        return;
+      }
+
+      event.preventDefault();
+      editor.setRangeText(`\n${nextPrefix}`, start, end, 'end');
+      editor.dispatchEvent(new Event('input', { bubbles:true }));
+    });
 
     view.addEventListener('click', () => {
       showEditor();
