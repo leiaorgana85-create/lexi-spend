@@ -11,18 +11,12 @@
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="apple-touch-icon" sizes="180x180" href="https://leiaorgana85-create.github.io/lexi-assets/spend-logo.png">
   <style>
-    html, body {
-      margin: 0;
-      min-height: 100%;
-      background: #0f1115;
-      color: #f3f4f6;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-    }
-    body { display: grid; place-items: center; }
-    #loader { padding: 24px; text-align: center; }
-    #loader strong { display: block; font-size: 22px; margin-bottom: 8px; }
-    #loader span { color: #9ca3af; }
-    #loader.error span { color: #fca5a5; }
+    html, body { margin:0; min-height:100%; background:#0f1115; color:#f3f4f6; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
+    body { display:grid; place-items:center; }
+    #loader { padding:24px; text-align:center; }
+    #loader strong { display:block; font-size:22px; margin-bottom:8px; }
+    #loader span { color:#9ca3af; }
+    #loader.error span { color:#fca5a5; }
   </style>
 </head>
 <body>
@@ -30,57 +24,36 @@
   <script>
     (async () => {
       const files = [
-        'payload/part1a.txt',
-        'payload/part1b.txt',
-        'payload/part2a.txt',
-        'payload/part2b.txt',
-        'payload/part3aa.txt',
-        'payload/part3ab.txt',
-        'payload/part3b.txt',
-        'payload/part4a.txt',
-        'payload/part4b.txt',
-        'payload/part5a.txt',
-        'payload/part5b.txt'
+        'payload/part1a.txt','payload/part1b.txt','payload/part2a.txt','payload/part2b.txt',
+        'payload/part3aa.txt','payload/part3ab.txt','payload/part3b.txt','payload/part4a.txt',
+        'payload/part4b.txt','payload/part5a.txt','payload/part5b.txt'
       ];
-
       try {
-        if (typeof DecompressionStream !== 'function') {
-          throw new Error('This browser does not support the app loader.');
-        }
-
+        if (typeof DecompressionStream !== 'function') throw new Error('This browser does not support the app loader.');
         const parts = await Promise.all(files.map(async path => {
-          const response = await fetch(path, { cache: 'no-store' });
+          const response = await fetch(path, { cache:'no-store' });
           if (!response.ok) throw new Error(`Could not load ${path}`);
           return (await response.text()).trim();
         }));
-
         const binary = atob(parts.join(''));
         const bytes = new Uint8Array(binary.length);
-        for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-
-        const stream = new Blob([bytes])
-          .stream()
-          .pipeThrough(new DecompressionStream('gzip'));
+        for (let i=0; i<binary.length; i++) bytes[i] = binary.charCodeAt(i);
+        const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream('gzip'));
         let html = await new Response(stream).text();
 
-        /* Make Google Identity synchronous inside the reconstructed app. */
-        html = html.replace(
-          'https://accounts.google.com/gsi/client" async defer',
-          'https://accounts.google.com/gsi/client"'
-        );
+        const oauthStart = html.indexOf('<script src="https://accounts.google.com/gsi/client"');
+        const styleStart = oauthStart >= 0 ? html.indexOf('<style>', oauthStart) : -1;
+        if (oauthStart < 0 || styleStart < 0) throw new Error('Lexi Spend source bridge marker was not found.');
 
-        /*
-          iOS/Safari requires the Google OAuth popup request to remain in the
-          direct button-click call stack. The original bridge awaited a polling
-          helper first, which can cause the popup to be rejected on Safari.
-        */
-        html = html
-          .replace('async function beginOAuth() {', 'function beginOAuth() {')
-          .replace('      await waitForIdentityServices();\n\n', '')
-          .replace(
-            ": 'Google authorization failed. Try again.';",
-            ": `Google authorization failed (${error?.type || 'unknown_error'}). Try again.`;"
-          );
+        const closeScript = '</scr' + 'ipt>';
+        const bridgeTags = [
+          '<script src="./bridge-state.js">' + closeScript,
+          '<script src="./bridge-auth.js">' + closeScript,
+          '<script src="./bridge-call.js">' + closeScript,
+          '<script src="./bridge-runtime.js">' + closeScript,
+          '<script src="./bridge-settings.js">' + closeScript
+        ].join('\n');
+        html = html.slice(0, oauthStart) + bridgeTags + '\n\n  ' + html.slice(styleStart);
 
         document.open();
         document.write(html);
