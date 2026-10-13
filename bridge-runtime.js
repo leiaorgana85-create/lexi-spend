@@ -33,20 +33,23 @@
 
   window.LexiSpendApi = {
     clearAuthorization() { B.clearCode(); B.showGate(); },
-    reconnect() { B.clearCode(); return B.ensureCode(); }
+    reconnect() {
+      B.clearCode();
+      B.recreateFrame();
+      return B.ensureCode();
+    }
   };
 
-  window.addEventListener('DOMContentLoaded', () => B.ensureFrame());
+  // Start the Apps Script bridge as soon as <body> exists, rather than
+  // waiting for the whole Spend UI to finish parsing.
+  B.warmBridge();
 
-  window.addEventListener('pageshow', event => {
-    if (!event.persisted) return;
-    try { B.recreateFrame(); } catch (_) {}
+  window.addEventListener('pageshow', () => {
+    if (!B.frame || !B.frame.isConnected) B.ensureFrame();
   });
 
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState !== 'visible') return;
-    if (!B.ready && B.frame) {
-      try { B.recreateFrame(); } catch (_) {}
-    }
+    if (!B.frame || !B.frame.isConnected) B.ensureFrame();
   });
 })();
