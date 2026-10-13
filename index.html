@@ -63,10 +63,10 @@
           .pipeThrough(new DecompressionStream('gzip'));
         let html = await new Response(stream).text();
 
-        /* Keep Google Identity loaded before the OAuth bridge executes. */
+        /* Make Google Identity synchronous inside the reconstructed app. */
         html = html.replace(
-          '<script src="https://accounts.google.com/gsi/client" async defer></script>',
-          '<script src="https://accounts.google.com/gsi/client"></script>'
+          'https://accounts.google.com/gsi/client" async defer',
+          'https://accounts.google.com/gsi/client"'
         );
 
         /*
