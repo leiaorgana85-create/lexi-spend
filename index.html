@@ -230,8 +230,8 @@
 
         html = html.replace(startupLiveRefresh, startupLiveRefreshIdle);
 
-        const uiStyleTag = '<link rel="stylesheet" href="./spend-ui.css?v=2">';
-        const uiScriptTag = '<script src="./spend-ui.js?v=3">' + closeScript;
+        const uiStyleTag = '<link rel="stylesheet" href="./spend-ui.css?v=4">';
+        const uiScriptTag = '<script src="./spend-ui.js?v=4">' + closeScript;
 
         if (!html.includes('</head>') || !html.includes('</body>')) {
           throw new Error('Lexi Spend UI shell markers were not found.');
