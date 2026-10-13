@@ -1,4 +1,4 @@
-const CACHE = 'lexi-spend-v27';
+const CACHE = 'lexi-spend-v28';
 const SHELL = [
   './',
   './index.html',
@@ -39,6 +39,7 @@ const UI_PATCH = String.raw`
     '.lexi-converter-output { min-width:64px !important; font-size:14px !important; line-height:1 !important; }',
     'body[data-lexi-view="notes"] .lexi-notes-page { flex:0 0 auto !important; width:calc(100% - 16px) !important; max-width:calc(100% - 16px) !important; min-width:0 !important; align-self:center !important; margin:4px auto 0 !important; padding:0 0 4px !important; overflow:hidden !important; }',
     '.lexi-notes-view, .lexi-notes-editor { flex:0 0 auto !important; width:100% !important; height:min(52dvh, 480px) !important; max-height:min(52dvh, 480px) !important; overflow-x:hidden !important; overflow-y:auto !important; scrollbar-width:none !important; }',
+    '.lexi-notes-editor { font-size:16px !important; line-height:1.3 !important; }',
     '.lexi-notes-view::-webkit-scrollbar, .lexi-notes-editor::-webkit-scrollbar { display:none !important; }',
     '.lexi-notes-tools[hidden] { display:none !important; }',
     '.lexi-notes-head { align-items:center !important; margin-bottom:6px !important; }',
