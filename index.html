@@ -61,7 +61,20 @@
         const stream = new Blob([bytes])
           .stream()
           .pipeThrough(new DecompressionStream('gzip'));
-        const html = await new Response(stream).text();
+        let html = await new Response(stream).text();
+
+        /*
+          iOS/Safari requires the Google OAuth popup request to remain in the
+          direct button-click call stack. The original bridge awaited a polling
+          helper first, which can cause the popup to be rejected on Safari.
+        */
+        html = html
+          .replace('async function beginOAuth() {', 'function beginOAuth() {')
+          .replace('      await waitForIdentityServices();\n\n', '')
+          .replace(
+            ": 'Google authorization failed. Try again.';",
+            ": `Google authorization failed (${error?.type || 'unknown_error'}). Try again.`;"
+          );
 
         document.open();
         document.write(html);
