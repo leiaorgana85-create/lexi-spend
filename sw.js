@@ -1,12 +1,14 @@
-const CACHE = 'lexi-spend-v1';
+const CACHE = 'lexi-spend-v2';
 const SHELL = [
   './',
   './index.html',
   './manifest.webmanifest',
-  './payload/part1.txt',
+  './payload/part1a.txt',
+  './payload/part1b.txt',
   './payload/part2a.txt',
   './payload/part2b.txt',
-  './payload/part3a.txt',
+  './payload/part3aa.txt',
+  './payload/part3ab.txt',
   './payload/part3b.txt',
   './payload/part4a.txt',
   './payload/part4b.txt',
