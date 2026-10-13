@@ -43,6 +43,7 @@
         <button class="lexi-note-tool" type="button" data-note-numbered>1. Number</button>
         <button class="lexi-note-tool" type="button" data-note-prefix="☐ ">☐ Check</button>
         <button class="lexi-note-tool" type="button" data-note-indent>↳ Indent</button>
+        <button class="lexi-note-tool" type="button" data-note-outdent aria-label="Outdent" title="Outdent"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 6h10M10 12h10M10 18h10M6 9l-3 3 3 3M3 12h5"/></svg></button>
         <button class="lexi-note-tool" type="button" data-note-undo>↶ Undo</button>
         <button class="lexi-note-tool" type="button" data-note-redo>↷ Redo</button>
         <button class="lexi-note-tool" type="button" data-note-date>Date</button>
@@ -95,6 +96,13 @@
     });
     section.querySelector('[data-note-indent]').addEventListener('click', () => {
       replaceSelectedLines(line => `  ${line}`);
+    });
+    section.querySelector('[data-note-outdent]').addEventListener('click', () => {
+      replaceSelectedLines(line => {
+        if (line.startsWith('  ')) return line.slice(2);
+        if (line.startsWith(' ')) return line.slice(1);
+        return line;
+      });
     });
     section.querySelector('[data-note-date]').addEventListener('click', () => {
       const d = new Date();
