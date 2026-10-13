@@ -68,6 +68,74 @@
           "setStatus('');"
         );
 
+        const startupCacheWrite = `          savedAt: Date.now(),
+          localDate: localDate(),
+          summary: state.summary || null,
+          stayName: state.stayName || '',
+          stayStart: state.stayStart || '',
+          stayEnd: state.stayEnd || '',
+          stayStatus: state.stayStatus || '',
+          staySource: state.staySource || 'Stays'`;
+
+        const startupCacheWriteFull = `          savedAt: Date.now(),
+          localDate: localDate(),
+          appVersion: state.appVersion || '',
+          country: state.country || '',
+          currency: state.currency || '',
+          symbol: state.symbol || '',
+          recent: Array.isArray(state.recent) ? state.recent : [],
+          cash: state.cash || null,
+          cashWallets: state.cashWallets || {},
+          cashMonthWithdrawals: state.cashMonthWithdrawals || [],
+          summary: state.summary || null,
+          stayName: state.stayName || '',
+          stayStart: state.stayStart || '',
+          stayEnd: state.stayEnd || '',
+          stayStatus: state.stayStatus || '',
+          staySource: state.staySource || 'Stays'`;
+
+        const startupCacheRestore = `      state.summary = cached.summary;
+      state.stayName = cached.stayName || '';
+      state.stayStart = cached.stayStart || '';
+      state.stayEnd = cached.stayEnd || '';
+      state.stayStatus = cached.stayStatus || '';
+      state.staySource = cached.staySource || 'Stays';
+
+      renderStayPeriodCurrent();
+      renderSummary(state.summary);
+      setStatus('Refreshing live totals…');`;
+
+        const startupCacheRestoreFull = `      state = {
+        ...state,
+        appVersion: cached.appVersion || state.appVersion,
+        country: cached.country || state.country,
+        currency: cached.currency || state.currency,
+        symbol: cached.symbol || state.symbol,
+        recent: Array.isArray(cached.recent) ? cached.recent : [],
+        cash: cached.cash || null,
+        cashWallets: cached.cashWallets || {},
+        cashMonthWithdrawals: Array.isArray(cached.cashMonthWithdrawals)
+          ? cached.cashMonthWithdrawals
+          : [],
+        summary: cached.summary,
+        stayName: cached.stayName || '',
+        stayStart: cached.stayStart || '',
+        stayEnd: cached.stayEnd || '',
+        stayStatus: cached.stayStatus || '',
+        staySource: cached.staySource || 'Stays'
+      };
+
+      applyState();
+      setStatus('');`;
+
+        if (!html.includes(startupCacheWrite) || !html.includes(startupCacheRestore)) {
+          throw new Error('Lexi Spend startup-cache markers were not found.');
+        }
+
+        html = html
+          .replace(startupCacheWrite, startupCacheWriteFull)
+          .replace(startupCacheRestore, startupCacheRestoreFull);
+
         document.open();
         document.write(html);
         document.close();
