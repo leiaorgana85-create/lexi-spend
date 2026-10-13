@@ -63,6 +63,12 @@
           .pipeThrough(new DecompressionStream('gzip'));
         let html = await new Response(stream).text();
 
+        /* Keep Google Identity loaded before the OAuth bridge executes. */
+        html = html.replace(
+          '<script src="https://accounts.google.com/gsi/client" async defer></script>',
+          '<script src="https://accounts.google.com/gsi/client"></script>'
+        );
+
         /*
           iOS/Safari requires the Google OAuth popup request to remain in the
           direct button-click call stack. The original bridge awaited a polling
