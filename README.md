@@ -13,6 +13,16 @@ Production baseline audited on 2026-10-12:
 - Spreadsheet timezone: `Asia/Bangkok`
 - Apps Script project timezone: `America/New_York` (intentional legacy/fallback setting; do not change casually)
 
+Read-only architecture proof completed on 2026-10-13:
+- New standalone Apps Script project: `Lexi Spend API`
+- Linked to a standard Google Cloud project
+- Google Apps Script API enabled
+- Google Drive API enabled
+- API Executable deployed with access restricted to the owner
+- GitHub Pages frontend successfully obtained Google OAuth authorization and called `apiProbe()` through `scripts.run`
+- `apiProbe()` successfully read the existing `Spend Log` and returned timezone `Asia/Bangkok`
+- No Sheet write was performed by the proof
+
 ## Target architecture
 
 ```text
