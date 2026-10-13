@@ -291,6 +291,12 @@
             stroke-linecap:round;
             stroke-linejoin:round;
           }
+          .lexi-notes-check-row { gap:6px !important; }
+          .lexi-notes-check-row input[type="checkbox"] {
+            width:14px !important;
+            height:14px !important;
+            margin:4px 0 0 !important;
+          }
         </style>`;
         const refineScriptTag = '<script id="lexiSpendRefineScriptV16">' + `
           (() => {
@@ -323,6 +329,41 @@
               setIcon('.lexi-note-tool[data-note-date]', 'date', 'Date');
             }
 
+            function enableNoteEnterContinuation() {
+              const editor = document.getElementById('lexiNotesEditor');
+              if (!editor || editor.dataset.lexiAutoContinue === '1') return;
+              editor.dataset.lexiAutoContinue = '1';
+
+              editor.addEventListener('keydown', event => {
+                if (event.key !== 'Enter' || event.shiftKey || event.isComposing) return;
+
+                const start = editor.selectionStart;
+                const end = editor.selectionEnd;
+                const value = editor.value;
+                const lineStart = value.lastIndexOf('\n', Math.max(0, start - 1)) + 1;
+                const lineBeforeCaret = value.slice(lineStart, start);
+
+                const check = lineBeforeCaret.match(/^(\s*)\[(?: |x|X)\]\s?(.*)$/);
+                const bullet = lineBeforeCaret.match(/^(\s*)•\s?(.*)$/);
+                const numbered = lineBeforeCaret.match(/^(\s*)(\d+)\.\s?(.*)$/);
+
+                let nextPrefix = '';
+                if (check) {
+                  nextPrefix = `${check[1]}[ ] `;
+                } else if (bullet) {
+                  nextPrefix = `${bullet[1]}• `;
+                } else if (numbered) {
+                  nextPrefix = `${numbered[1]}${Number(numbered[2]) + 1}. `;
+                } else {
+                  return;
+                }
+
+                event.preventDefault();
+                editor.setRangeText(`\n${nextPrefix}`, start, end, 'end');
+                editor.dispatchEvent(new Event('input', { bubbles:true }));
+              });
+            }
+
             function refineAtmDialog() {
               document.querySelectorAll('h1,h2,h3,h4,.dialogTitle,.modalTitle').forEach(el => {
                 const text = (el.textContent || '').trim().toLowerCase();
@@ -339,6 +380,7 @@
 
             function refineAll() {
               refineNotesTools();
+              enableNoteEnterContinuation();
               refineAtmDialog();
             }
 
