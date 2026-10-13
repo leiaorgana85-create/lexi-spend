@@ -1,4 +1,4 @@
-const CACHE = 'lexi-spend-v30';
+const CACHE = 'lexi-spend-v31';
 const SHELL = [
   './',
   './index.html',
@@ -25,10 +25,10 @@ const SHELL = [
 
 const UI_PATCH = String.raw`
 ;(() => {
-  if (document.getElementById('lexiSpendUiRefineV30')) return;
+  if (document.getElementById('lexiSpendUiRefineV31')) return;
 
   const style = document.createElement('style');
-  style.id = 'lexiSpendUiRefineV30';
+  style.id = 'lexiSpendUiRefineV31';
   style.textContent = [
     'html, body { width:100% !important; max-width:100% !important; overflow-x:hidden !important; }',
     '.app { width:100% !important; max-width:600px !important; margin-left:auto !important; margin-right:auto !important; overflow-x:hidden !important; }',
@@ -36,7 +36,7 @@ const UI_PATCH = String.raw`
     '.titleLine { width:100% !important; }',
     '.lexi-header-left { flex:0 0 auto !important; margin-right:4px !important; }',
     '.lexi-header-left .gear { flex:0 0 25px !important; width:25px !important; height:25px !important; min-width:25px !important; min-height:25px !important; margin:0 !important; }',
-    '.lexi-header-converter { margin-left:auto !important; margin-right:0 !important; flex:0 0 auto !important; justify-content:flex-end !important; gap:2px !important; }',
+    '.lexi-header-converter { margin-left:auto !important; margin-right:-2px !important; flex:0 0 auto !important; justify-content:flex-end !important; gap:2px !important; }',
     '.lexi-converter-symbol { font-size:14px !important; }',
     '.lexi-converter-input { width:88px !important; }',
     '.lexi-converter-output { min-width:52px !important; font-size:14px !important; line-height:1 !important; text-align:left !important; }',
@@ -332,7 +332,8 @@ self.addEventListener('fetch', event => {
 
   const isUiJs = url.pathname.endsWith('/spend-ui.js');
   const forceFreshUi = isUiJs || url.pathname.endsWith('/spend-ui.css');
-  const networkRequest = forceFreshUi
+  const forceFreshDocument = request.mode === 'navigate' || url.pathname.endsWith('/index.html') || url.pathname.endsWith('/lexi-spend/');
+  const networkRequest = (forceFreshUi || forceFreshDocument)
     ? new Request(request, { cache: 'no-store' })
     : request;
 
