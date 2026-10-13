@@ -136,6 +136,100 @@
           .replace(startupCacheWrite, startupCacheWriteFull)
           .replace(startupCacheRestore, startupCacheRestoreFull);
 
+        const startupLiveRefresh = `  renderStartupStateCache();
+
+  google.script.run
+    .withSuccessHandler(r => {
+      state = {
+        ...state,
+        ...r
+      };
+
+      applyState();
+      setStatus('');
+    })
+    .withFailureHandler(err => {
+      setStatus(
+        err.message ||
+        'Could not load app.',
+        true
+      );
+    })
+    .getAppState(
+      localDate(),
+      cashWalletCurrency
+    );`;
+
+        const startupLiveRefreshIdle = `  const hadStartupCache = renderStartupStateCache();
+
+  const loadLiveStartupState = () => {
+    if (isSaving || isCashSaving || isDeleting) {
+      setTimeout(loadLiveStartupState, 1200);
+      return;
+    }
+
+    google.script.run
+      .withSuccessHandler(r => {
+        state = {
+          ...state,
+          ...r
+        };
+
+        applyState();
+        setStatus('');
+      })
+      .withFailureHandler(err => {
+        setStatus(
+          err.message ||
+          'Could not load app.',
+          true
+        );
+      })
+      .getAppState(
+        localDate(),
+        cashWalletCurrency
+      );
+  };
+
+  if (hadStartupCache) {
+    let startupRefreshTimer = null;
+    let startupRefreshStarted = false;
+    const activityEvents = ['pointerdown', 'keydown', 'input', 'touchstart'];
+
+    const stopStartupActivityWatch = () => {
+      activityEvents.forEach(type =>
+        document.removeEventListener(type, scheduleStartupRefresh, true)
+      );
+    };
+
+    const runStartupRefresh = () => {
+      if (startupRefreshStarted) return;
+      startupRefreshStarted = true;
+      stopStartupActivityWatch();
+      loadLiveStartupState();
+    };
+
+    const scheduleStartupRefresh = () => {
+      if (startupRefreshStarted) return;
+      clearTimeout(startupRefreshTimer);
+      startupRefreshTimer = setTimeout(runStartupRefresh, 8000);
+    };
+
+    activityEvents.forEach(type =>
+      document.addEventListener(type, scheduleStartupRefresh, { capture:true, passive:true })
+    );
+
+    scheduleStartupRefresh();
+  } else {
+    loadLiveStartupState();
+  }`;
+
+        if (!html.includes(startupLiveRefresh)) {
+          throw new Error('Lexi Spend startup live-refresh marker was not found.');
+        }
+
+        html = html.replace(startupLiveRefresh, startupLiveRefreshIdle);
+
         document.open();
         document.write(html);
         document.close();
