@@ -1,4 +1,4 @@
-const CACHE = 'lexi-spend-v25';
+const CACHE = 'lexi-spend-v26';
 const SHELL = [
   './',
   './index.html',
@@ -23,50 +23,50 @@ const SHELL = [
   './payload/part5b.txt'
 ];
 
-const NOTES_PARITY_PATCH = `
+const NOTES_PARITY_PATCH = String.raw`
 ;(() => {
   if (document.getElementById('lexiTravelNotesParityV1')) return;
 
   const style = document.createElement('style');
   style.id = 'lexiTravelNotesParityV1';
-  style.textContent = ` + "`" + `
-    .lexi-notes-check-row {
-      display:grid !important;
-      grid-template-columns:20px minmax(0,1fr) !important;
-      align-items:start !important;
-      gap:0 !important;
-      min-height:1.38em !important;
-    }
-    .lexi-notes-check-row input[type="checkbox"] {
-      -webkit-appearance:checkbox !important;
-      appearance:auto !important;
-      box-sizing:content-box !important;
-      width:14px !important;
-      height:14px !important;
-      min-width:0 !important;
-      min-height:0 !important;
-      margin:1px 0 0 1px !important;
-      padding:0 !important;
-      border:initial !important;
-      border-radius:initial !important;
-      background:initial !important;
-      display:block !important;
-    }
-    .lexi-notes-check-row input[type="checkbox"]:checked {
-      background:initial !important;
-      border-color:initial !important;
-    }
-    .lexi-notes-check-row input[type="checkbox"]:checked::after {
-      content:none !important;
-    }
-    .lexi-notes-check-label {
-      min-width:0 !important;
-      line-height:1.38 !important;
-      white-space:pre-wrap !important;
-      overflow-wrap:anywhere !important;
-    }
-    .lexi-notes-check-indent { display:none !important; }
-  ` + "`" + `;
+  style.textContent = [
+    '.lexi-notes-check-row {',
+    '  display:grid !important;',
+    '  grid-template-columns:20px minmax(0,1fr) !important;',
+    '  align-items:start !important;',
+    '  gap:0 !important;',
+    '  min-height:1.38em !important;',
+    '}',
+    '.lexi-notes-check-row input[type="checkbox"] {',
+    '  -webkit-appearance:checkbox !important;',
+    '  appearance:auto !important;',
+    '  box-sizing:content-box !important;',
+    '  width:14px !important;',
+    '  height:14px !important;',
+    '  min-width:0 !important;',
+    '  min-height:0 !important;',
+    '  margin:1px 0 0 1px !important;',
+    '  padding:0 !important;',
+    '  border:initial !important;',
+    '  border-radius:initial !important;',
+    '  background:initial !important;',
+    '  display:block !important;',
+    '}',
+    '.lexi-notes-check-row input[type="checkbox"]:checked {',
+    '  background:initial !important;',
+    '  border-color:initial !important;',
+    '}',
+    '.lexi-notes-check-row input[type="checkbox"]:checked::after {',
+    '  content:none !important;',
+    '}',
+    '.lexi-notes-check-label {',
+    '  min-width:0 !important;',
+    '  line-height:1.38 !important;',
+    '  white-space:pre-wrap !important;',
+    '  overflow-wrap:anywhere !important;',
+    '}',
+    '.lexi-notes-check-indent { display:none !important; }'
+  ].join('\n');
   document.head.appendChild(style);
 
   document.addEventListener('keydown', event => {
@@ -77,11 +77,11 @@ const NOTES_PARITY_PATCH = `
 
     const text = editor.value;
     const caret = editor.selectionStart;
-    const lineStart = text.lastIndexOf('\\n', Math.max(0, caret - 1)) + 1;
-    let lineEnd = text.indexOf('\\n', caret);
+    const lineStart = text.lastIndexOf('\n', Math.max(0, caret - 1)) + 1;
+    let lineEnd = text.indexOf('\n', caret);
     if (lineEnd === -1) lineEnd = text.length;
     const line = text.slice(lineStart, lineEnd);
-    const match = line.match(/^(\\s*)(•\\s+|\\[(?: |x|X)\\]\\s+|(\\d+)\\.\\s+)(.*)$/);
+    const match = line.match(/^(\s*)(•\s+|\[(?: |x|X)\]\s+|(\d+)\.\s+)(.*)$/);
     if (!match) return;
 
     const indent = match[1] || '';
@@ -98,9 +98,9 @@ const NOTES_PARITY_PATCH = `
       editor.setSelectionRange(nextCaret, nextCaret);
     } else {
       let nextPrefix = prefix;
-      if (/^\\[(?: |x|X)\\]\\s+/.test(prefix)) nextPrefix = '[ ] ';
-      if (number !== null) nextPrefix = ` + "`" + `\${number + 1}. ` + "`" + `;
-      const insertion = ` + "`" + `\\n\${indent}\${nextPrefix}` + "`" + `;
+      if (/^\[(?: |x|X)\]\s+/.test(prefix)) nextPrefix = '[ ] ';
+      if (number !== null) nextPrefix = String(number + 1) + '. ';
+      const insertion = '\n' + indent + nextPrefix;
       editor.value = text.slice(0, caret) + insertion + text.slice(caret);
       const nextCaret = caret + insertion.length;
       editor.setSelectionRange(nextCaret, nextCaret);
