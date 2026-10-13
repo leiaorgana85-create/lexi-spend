@@ -1,4 +1,4 @@
-const CACHE = 'lexi-spend-v28';
+const CACHE = 'lexi-spend-v29';
 const SHELL = [
   './',
   './index.html',
@@ -25,11 +25,14 @@ const SHELL = [
 
 const UI_PATCH = String.raw`
 ;(() => {
-  if (document.getElementById('lexiSpendUiRefineV27')) return;
+  if (document.getElementById('lexiSpendUiRefineV29')) return;
 
   const style = document.createElement('style');
-  style.id = 'lexiSpendUiRefineV27';
+  style.id = 'lexiSpendUiRefineV29';
   style.textContent = [
+    'html, body { width:100% !important; max-width:100% !important; overflow-x:hidden !important; }',
+    '.app { width:100% !important; max-width:600px !important; margin-left:auto !important; margin-right:auto !important; overflow-x:hidden !important; }',
+    '.top, .titleLine, #pagerShell, .lexi-limit-page, .lexi-notes-page { max-width:100% !important; }',
     '.titleLine { width:100% !important; }',
     '.lexi-header-left { flex:0 0 auto !important; margin-right:4px !important; }',
     '.lexi-header-left .gear { flex:0 0 25px !important; width:25px !important; height:25px !important; min-width:25px !important; min-height:25px !important; margin:0 !important; }',
@@ -142,7 +145,20 @@ const UI_PATCH = String.raw`
     parts.section.dataset.lexiNotesMode = 'edit';
     const button = parts.section.querySelector('.lexi-notes-mode-btn');
     if (button) button.textContent = 'Done';
-    parts.editor.focus();
+  }
+
+  function resetViewportX() {
+    const top = window.scrollY || document.documentElement.scrollTop || document.body.scrollTop || 0;
+    document.documentElement.scrollLeft = 0;
+    document.body.scrollLeft = 0;
+    window.scrollTo(0, top);
+  }
+
+  function settleViewportX() {
+    resetViewportX();
+    requestAnimationFrame(resetViewportX);
+    setTimeout(resetViewportX, 80);
+    setTimeout(resetViewportX, 320);
   }
 
   function setupNotes() {
@@ -166,6 +182,7 @@ const UI_PATCH = String.raw`
         if (parts.section.dataset.lexiNotesMode === 'edit') {
           parts.editor.blur();
           showRead(parts);
+          settleViewportX();
         } else {
           showEdit(parts);
         }
@@ -187,7 +204,25 @@ const UI_PATCH = String.raw`
       notesTab.addEventListener('click', () => queueMicrotask(() => showRead(notesParts())));
     }
 
+    if (!parts.editor.dataset.lexiViewportGuard) {
+      parts.editor.dataset.lexiViewportGuard = '1';
+      parts.editor.addEventListener('blur', settleViewportX);
+    }
+
+    const tabbar = document.getElementById('lexiTabbar');
+    if (tabbar && !tabbar.dataset.lexiViewportGuard) {
+      tabbar.dataset.lexiViewportGuard = '1';
+      tabbar.addEventListener('click', event => {
+        const tab = event.target.closest?.('[data-lexi-view]');
+        if (!tab) return;
+        const currentEditor = document.getElementById('lexiNotesEditor');
+        if (currentEditor && document.activeElement === currentEditor) currentEditor.blur();
+        settleViewportX();
+      }, true);
+    }
+
     showRead(parts);
+    settleViewportX();
   }
 
   document.addEventListener('keydown', event => {
