@@ -41,6 +41,25 @@ h1 {
 }
 
 .lexi-title-icon { font-size: 11.5px; line-height: 1; }
+h1 .lexi-title-icon {
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 15px;
+  width: 15px;
+  height: 15px;
+  font-size: 0 !important;
+  line-height: 0 !important;
+}
+h1 .lexi-title-icon::before {
+  content: "";
+  display: block;
+  width: 14px;
+  height: 14px;
+  background: currentColor;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M4 7h15a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a3 3 0 0 1 3-3h11v4H6a2 2 0 0 0-2 2m12 3h5v4h-5a2 2 0 1 1 0-4Z' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M4 7h15a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a3 3 0 0 1 3-3h11v4H6a2 2 0 0 0-2 2m12 3h5v4h-5a2 2 0 1 1 0-4Z' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / contain no-repeat;
+}
 
 .gear {
   width: 29px;
@@ -518,6 +537,10 @@ body[data-lexi-view="notes"] .lexi-notes-page { display: flex; }
 .lexi-tab[data-lexi-view="spend"]::before {
   -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M6 3h12a2 2 0 0 1 2 2v16H4V5a2 2 0 0 1 2-2Zm2 5h8M8 12h5M8 16h3' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
   mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M6 3h12a2 2 0 0 1 2 2v16H4V5a2 2 0 0 1 2-2Zm2 5h8M8 12h5M8 16h3' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+}
+body .lexi-tab[data-lexi-view="spend"]::before {
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cellipse cx='12' cy='6' rx='4' ry='2' fill='none' stroke='black' stroke-width='2'/%3E%3Cpath d='M8 6v4c0 1.1 1.8 2 4 2s4-.9 4-2V6M8 10v4c0 1.1 1.8 2 4 2s4-.9 4-2v-4M8 14v4c0 1.1 1.8 2 4 2s4-.9 4-2v-4' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") !important;
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cellipse cx='12' cy='6' rx='4' ry='2' fill='none' stroke='black' stroke-width='2'/%3E%3Cpath d='M8 6v4c0 1.1 1.8 2 4 2s4-.9 4-2V6M8 10v4c0 1.1 1.8 2 4 2s4-.9 4-2v-4M8 14v4c0 1.1 1.8 2 4 2s4-.9 4-2v-4' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") !important;
 }
 .lexi-tab[data-lexi-view="limit"]::before {
   -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M4 20V10M10 20V4M16 20v-7M22 20H2' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
