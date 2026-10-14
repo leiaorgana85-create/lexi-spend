@@ -1,4 +1,4 @@
-const CACHE = 'lexi-spend-v33';
+const CACHE = 'lexi-spend-v34';
 const SHELL = [
   './',
   './index.html',
@@ -25,10 +25,10 @@ const SHELL = [
 
 const UI_PATCH = String.raw`
 ;(() => {
-  if (document.getElementById('lexiSpendUiRefineV33')) return;
+  if (document.getElementById('lexiSpendUiRefineV34')) return;
 
   const style = document.createElement('style');
-  style.id = 'lexiSpendUiRefineV33';
+  style.id = 'lexiSpendUiRefineV34';
   style.textContent = [
     'html, body { width:100% !important; max-width:100% !important; overflow-x:hidden !important; }',
     '.app { width:100% !important; max-width:600px !important; margin-left:auto !important; margin-right:auto !important; overflow-x:hidden !important; }',
@@ -41,9 +41,9 @@ const UI_PATCH = String.raw`
     '.lexi-header-left .gear { flex:0 0 28px !important; width:28px !important; height:28px !important; min-width:28px !important; min-height:28px !important; margin:0 !important; }',
     '.lexi-header-converter { margin-left:auto !important; margin-right:0 !important; flex:0 0 auto !important; display:flex !important; align-items:center !important; justify-content:flex-end !important; gap:0 !important; padding:3px 5px !important; border:1px solid var(--line) !important; border-radius:10px !important; background:var(--card) !important; box-sizing:border-box !important; }',
     '.lexi-converter-symbol { flex:0 0 auto !important; margin-right:3px !important; font-size:15px !important; line-height:1 !important; color:var(--muted) !important; }',
-    '.lexi-converter-input { width:86px !important; height:30px !important; min-height:30px !important; border:0 !important; border-radius:7px !important; background:var(--field) !important; padding:2px 6px !important; font:700 16px/1 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif !important; }',
+    '.lexi-converter-input { width:86px !important; height:30px !important; min-height:30px !important; border:0 !important; border-radius:7px !important; background:var(--field) !important; padding:2px 6px !important; font:700 15.5px/1 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif !important; }',
     '.lexi-converter-arrow { flex:0 0 auto !important; margin:0 4px !important; font-size:12px !important; line-height:1 !important; color:var(--muted) !important; }',
-    '.lexi-converter-output { flex:0 0 auto !important; min-width:52px !important; font:700 16px/1 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif !important; text-align:left !important; }',
+    '.lexi-converter-output { flex:0 0 auto !important; min-width:52px !important; font:700 15.5px/1 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif !important; text-align:left !important; }',
     '#pagerShell .pageInner { box-sizing:border-box !important; padding-top:8px !important; }',
     '.lexi-limit-scroll { box-sizing:border-box !important; padding-top:8px !important; }',
     '.lexi-cash-card { padding-top:8px !important; }',
@@ -55,10 +55,11 @@ const UI_PATCH = String.raw`
     '.lexi-entry-card .noteToggle { padding-top:12px !important; }',
     '.lexi-entry-card .saveActionRow { margin-top:12px !important; }',
     '.lexi-recent-card { margin-top:15px !important; }',
-    '.lexi-tabbar { border-top:1px solid var(--line) !important; background:#0f1115 !important; padding:5px 6px calc(2px + env(safe-area-inset-bottom)) !important; box-shadow:none !important; backdrop-filter:none !important; -webkit-backdrop-filter:none !important; }',
-    '.lexi-tab { position:relative !important; min-height:50px !important; padding:8px 2px 1px !important; gap:4px !important; border-radius:9px !important; font-size:11px !important; }',
+    '.lexi-tabbar { border-top:1px solid var(--line) !important; background:#0f1115 !important; padding:4px 6px max(0px, calc(env(safe-area-inset-bottom) - 8px)) !important; box-shadow:none !important; backdrop-filter:none !important; -webkit-backdrop-filter:none !important; }',
+    '.lexi-tab { position:relative !important; min-height:50px !important; padding:9px 2px 0 !important; gap:4px !important; border-radius:9px !important; font-size:11px !important; }',
     '.lexi-tab::before { width:22px !important; height:22px !important; flex-basis:22px !important; }',
-    '.lexi-tab.active { background:transparent !important; color:var(--text) !important; box-shadow:inset 0 2px 0 var(--text) !important; }',
+    '.lexi-tab[data-lexi-view="spend"]::before { -webkit-mask-image:url("data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 24 24%27%3E%3Cpath d=%27M4%207h15a2%202%200%200%201%202%202v10a2%202%200%200%201-2%202H5a2%202%200%200%201-2-2V6a3%203%200%200%201%203-3h11v4H6a2%202%200%200%200-2%202Zm12%205h5v4h-5a2%202%200%201%201%200-4Z%27 fill=%27none%27 stroke=%27black%27 stroke-width=%272%27 stroke-linecap=%27round%27 stroke-linejoin=%27round%27/%3E%3C/svg%3E") !important; mask-image:url("data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 24 24%27%3E%3Cpath d=%27M4%207h15a2%202%200%200%201%202%202v10a2%202%200%200%201-2%202H5a2%202%200%200%201-2-2V6a3%203%200%200%201%203-3h11v4H6a2%202%200%200%200-2%202Zm12%205h5v4h-5a2%202%200%201%201%200-4Z%27 fill=%27none%27 stroke=%27black%27 stroke-width=%272%27 stroke-linecap=%27round%27 stroke-linejoin=%27round%27/%3E%3C/svg%3E") !important; }',
+    '.lexi-tab.active { background:transparent !important; color:var(--text) !important; box-shadow:inset 0 2px 0 #86efac !important; }',
     '.lexi-cash-card .cashCurrencyField { flex:0 0 140px !important; width:140px !important; }',
     '.lexi-cash-card #addCashBtn { min-width:180px !important; width:180px !important; }',
     '.lexi-entry-card #merchant::placeholder { font-size:13px !important; }',
@@ -79,7 +80,7 @@ const UI_PATCH = String.raw`
     '.lexi-notes-check-label { min-width:0 !important; line-height:1.38 !important; white-space:pre-wrap !important; overflow-wrap:anywhere !important; }',
     '.lexi-notes-check-row input[type="checkbox"]:checked + .lexi-notes-check-label { text-decoration:line-through; opacity:.58; }',
     '.lexi-notes-check-indent { display:none !important; }',
-    '@media (max-width:370px) { .top { min-height:50px !important; } .lexi-header-left { margin-right:4px !important; } .lexi-header-left h1 { font-size:14.5px !important; } .lexi-header-left .gear { flex-basis:26px !important; width:26px !important; height:26px !important; min-width:26px !important; min-height:26px !important; } .lexi-header-converter { padding:3px 4px !important; } .lexi-converter-input { width:68px !important; } .lexi-converter-output { min-width:48px !important; font-size:16px !important; } .lexi-cash-card .cashCurrencyField { flex-basis:132px !important; width:132px !important; } .lexi-cash-card #addCashBtn { min-width:170px !important; width:170px !important; } .lexi-tab { min-height:49px !important; font-size:10.5px !important; } .lexi-tab::before { width:21px !important; height:21px !important; flex-basis:21px !important; } }'
+    '@media (max-width:370px) { .top { min-height:50px !important; } .lexi-header-left { margin-right:4px !important; } .lexi-header-left h1 { font-size:14.5px !important; } .lexi-header-left .gear { flex-basis:26px !important; width:26px !important; height:26px !important; min-width:26px !important; min-height:26px !important; } .lexi-header-converter { padding:3px 4px !important; } .lexi-converter-input { width:68px !important; } .lexi-converter-output { min-width:48px !important; font-size:15.5px !important; } .lexi-cash-card .cashCurrencyField { flex-basis:132px !important; width:132px !important; } .lexi-cash-card #addCashBtn { min-width:170px !important; width:170px !important; } .lexi-tab { min-height:49px !important; font-size:10.5px !important; } .lexi-tab::before { width:21px !important; height:21px !important; flex-basis:21px !important; } }'
   ].join('\n');
   document.head.appendChild(style);
 
