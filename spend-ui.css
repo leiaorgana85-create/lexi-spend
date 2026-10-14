@@ -359,10 +359,14 @@ body[data-lexi-view="notes"] .lexi-notes-page { display: flex; }
 .lexi-cash-card .cashCurrencyField .currencySelect,
 .lexi-cash-card .cashActionButtons .smallBtn { min-height: 36px; height: 36px; }
 .lexi-cash-card #addCashBtn {
-  border: 1px solid #2563eb;
-  background: #2563eb;
-  color: #fff;
-  box-shadow: 0 4px 12px rgba(37,99,235,.22);
+  border: 1px solid #557864;
+  background: #3f624e;
+  color: #f7faf8;
+  box-shadow: 0 4px 12px rgba(63,98,78,.20);
+}
+.lexi-cash-card #addCashBtn:active {
+  background: #365543;
+  border-color: #4c6f5a;
 }
 .lexi-cash-card .cashListHead { margin-top: 15px; padding-top: 10px; border-top: 1px solid var(--line); }
 
