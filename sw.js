@@ -1,4 +1,4 @@
-const CACHE = 'lexi-spend-v31';
+const CACHE = 'lexi-spend-v32';
 const SHELL = [
   './',
   './index.html',
@@ -25,21 +25,38 @@ const SHELL = [
 
 const UI_PATCH = String.raw`
 ;(() => {
-  if (document.getElementById('lexiSpendUiRefineV31')) return;
+  if (document.getElementById('lexiSpendUiRefineV32')) return;
 
   const style = document.createElement('style');
-  style.id = 'lexiSpendUiRefineV31';
+  style.id = 'lexiSpendUiRefineV32';
   style.textContent = [
     'html, body { width:100% !important; max-width:100% !important; overflow-x:hidden !important; }',
     '.app { width:100% !important; max-width:600px !important; margin-left:auto !important; margin-right:auto !important; overflow-x:hidden !important; }',
     '.top, .titleLine, #pagerShell, .lexi-limit-page, .lexi-notes-page { max-width:100% !important; }',
-    '.titleLine { width:100% !important; }',
-    '.lexi-header-left { flex:0 0 auto !important; margin-right:4px !important; }',
-    '.lexi-header-left .gear { flex:0 0 25px !important; width:25px !important; height:25px !important; min-width:25px !important; min-height:25px !important; margin:0 !important; }',
-    '.lexi-header-converter { margin-left:auto !important; margin-right:-2px !important; flex:0 0 auto !important; justify-content:flex-end !important; gap:2px !important; }',
-    '.lexi-converter-symbol { font-size:14px !important; }',
-    '.lexi-converter-input { width:88px !important; }',
-    '.lexi-converter-output { min-width:52px !important; font-size:14px !important; line-height:1 !important; text-align:left !important; }',
+    '.top { min-height:44px !important; margin:0 -1px 6px !important; padding:2px 1px 7px !important; }',
+    '.titleLine { width:100% !important; min-height:34px !important; align-items:center !important; }',
+    '.lexi-header-left { flex:0 0 auto !important; margin-right:6px !important; gap:1px !important; }',
+    '.lexi-header-left h1 { font-size:15.5px !important; line-height:1 !important; font-weight:780 !important; letter-spacing:-0.015em !important; }',
+    '.lexi-title-icon { font-size:14px !important; line-height:1 !important; }',
+    '.lexi-header-left .gear { flex:0 0 28px !important; width:28px !important; height:28px !important; min-width:28px !important; min-height:28px !important; margin:0 !important; }',
+    '.lexi-header-converter { margin-left:auto !important; margin-right:0 !important; flex:0 0 auto !important; display:flex !important; align-items:center !important; justify-content:flex-end !important; gap:0 !important; padding:2px 4px !important; border:1px solid var(--line) !important; border-radius:10px !important; background:var(--card) !important; box-sizing:border-box !important; }',
+    '.lexi-converter-symbol { flex:0 0 auto !important; margin-right:2px !important; font-size:14px !important; line-height:1 !important; color:var(--muted) !important; }',
+    '.lexi-converter-input { width:86px !important; height:28px !important; min-height:28px !important; border:0 !important; border-radius:7px !important; background:var(--field) !important; padding:2px 6px !important; }',
+    '.lexi-converter-arrow { flex:0 0 auto !important; margin:0 4px !important; font-size:11px !important; color:var(--muted) !important; }',
+    '.lexi-converter-output { flex:0 0 auto !important; min-width:49px !important; font-size:14px !important; line-height:1 !important; font-weight:800 !important; text-align:left !important; }',
+    '#pagerShell .pageInner { box-sizing:border-box !important; padding-top:4px !important; }',
+    '.lexi-limit-scroll { box-sizing:border-box !important; padding-top:4px !important; }',
+    '.lexi-entry-card .row { margin-top:10px !important; }',
+    '.lexi-entry-card #expenseForm > .row:first-child { margin-top:0 !important; }',
+    '.lexi-entry-card .currencyPaymentRow { margin-top:10px !important; }',
+    '.lexi-entry-card .amountFull { margin-top:10px !important; }',
+    '.lexi-entry-card .dateBar { margin-top:10px !important; }',
+    '.lexi-entry-card .noteToggle { padding-top:10px !important; }',
+    '.lexi-entry-card .saveActionRow { margin-top:10px !important; }',
+    '.lexi-recent-card { margin-top:13px !important; }',
+    '.lexi-tabbar { border-top:1px solid var(--line) !important; background:#171a20 !important; padding:6px 8px calc(5px + env(safe-area-inset-bottom)) !important; box-shadow:none !important; backdrop-filter:none !important; -webkit-backdrop-filter:none !important; }',
+    '.lexi-tab { min-height:47px !important; padding:7px 2px 2px !important; gap:3px !important; }',
+    '.lexi-tab.active { background:transparent !important; color:var(--text) !important; }',
     '.lexi-cash-card .cashCurrencyField { flex:0 0 140px !important; width:140px !important; }',
     '.lexi-cash-card #addCashBtn { min-width:180px !important; width:180px !important; }',
     '.lexi-entry-card #merchant::placeholder { font-size:13px !important; }',
@@ -60,7 +77,7 @@ const UI_PATCH = String.raw`
     '.lexi-notes-check-label { min-width:0 !important; line-height:1.38 !important; white-space:pre-wrap !important; overflow-wrap:anywhere !important; }',
     '.lexi-notes-check-row input[type="checkbox"]:checked + .lexi-notes-check-label { text-decoration:line-through; opacity:.58; }',
     '.lexi-notes-check-indent { display:none !important; }',
-    '@media (max-width:370px) { .lexi-converter-input { width:78px !important; } .lexi-converter-output { min-width:48px !important; font-size:13px !important; } .lexi-cash-card .cashCurrencyField { flex-basis:132px !important; width:132px !important; } .lexi-cash-card #addCashBtn { min-width:170px !important; width:170px !important; } }'
+    '@media (max-width:370px) { .lexi-header-left { margin-right:4px !important; } .lexi-header-left h1 { font-size:14.5px !important; } .lexi-header-left .gear { flex-basis:26px !important; width:26px !important; height:26px !important; min-width:26px !important; min-height:26px !important; } .lexi-header-converter { padding:2px 3px !important; } .lexi-converter-input { width:70px !important; } .lexi-converter-output { min-width:43px !important; font-size:13px !important; } .lexi-cash-card .cashCurrencyField { flex-basis:132px !important; width:132px !important; } .lexi-cash-card #addCashBtn { min-width:170px !important; width:170px !important; } .lexi-tab { min-height:46px !important; } }'
   ].join('\n');
   document.head.appendChild(style);
 
