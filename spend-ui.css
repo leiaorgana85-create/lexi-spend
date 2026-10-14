@@ -560,3 +560,19 @@ body .lexi-tab[data-lexi-view="spend"]::before {
   .lexi-entry-card { padding-left: 9px; padding-right: 9px; }
   .lexi-tab { min-height: 48px; font-size: 10px; }
 }
+
+/* Final action/icon polish. */
+.lexi-entry-card .saveActionRow .primary {
+  border: 1px solid #557864;
+  background: #3f624e;
+  color: #f7faf8;
+  box-shadow: 0 4px 12px rgba(63,98,78,.20);
+}
+.lexi-entry-card .saveActionRow .primary:active {
+  background: #365543;
+  border-color: #4c6f5a;
+}
+body .lexi-tab[data-lexi-view="spend"]::before {
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Ccircle cx='12' cy='12' r='8' fill='none' stroke='black' stroke-width='2'/%3E%3Cpath d='M14.5 8.5c-.6-.6-1.4-1-2.5-1-1.6 0-2.8.8-2.8 2s1 1.7 2.8 2.1c1.8.4 2.8 1 2.8 2.2s-1.2 2.2-2.8 2.2c-1.2 0-2.2-.4-2.9-1.2M12 6.3v11.4' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") !important;
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Ccircle cx='12' cy='12' r='8' fill='none' stroke='black' stroke-width='2'/%3E%3Cpath d='M14.5 8.5c-.6-.6-1.4-1-2.5-1-1.6 0-2.8.8-2.8 2s1 1.7 2.8 2.1c1.8.4 2.8 1 2.8 2.2s-1.2 2.2-2.8 2.2c-1.2 0-2.2-.4-2.9-1.2M12 6.3v11.4' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") !important;
+}
