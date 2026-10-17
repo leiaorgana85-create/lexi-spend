@@ -101,6 +101,12 @@
     try { return String(localStorage.getItem(B.KEY) || '').trim(); } catch (_) { return ''; }
   };
 
+  B.maybePrepareInstallToken = code => {
+    const value = String(code || '').trim();
+    if (!value || B.isStandalone() || value.startsWith('lxs1.')) return;
+    B.prepareInstallToken?.(value).catch(() => {});
+  };
+
   B.storeCode = async value => {
     const code = String(value || '').trim();
     if (!code) throw new Error('API code is required.');
@@ -120,13 +126,18 @@
 
   B.getCodeDurable = async () => {
     const immediate = B.getCode();
-    if (immediate) { B.clearLegacyCookie(); return immediate; }
+    if (immediate) {
+      B.clearLegacyCookie();
+      B.maybePrepareInstallToken(immediate);
+      return immediate;
+    }
 
     const legacy = B.readCookie(B.LEGACY_COOKIE);
     if (legacy) {
       try {
         await B.storeCode(legacy);
         B.clearLegacyCookie();
+        B.maybePrepareInstallToken(legacy);
         return legacy;
       } catch (_) {}
     }
@@ -135,6 +146,7 @@
     if (indexed) {
       try { localStorage.setItem(B.KEY, indexed); } catch (_) {}
       B.clearLegacyCookie();
+      B.maybePrepareInstallToken(indexed);
       return indexed;
     }
 
@@ -145,7 +157,7 @@
   B.saveCode = async value => {
     const code = await B.storeCode(value);
     B.clearLegacyCookie();
-    if (!B.isStandalone() && !code.startsWith('lxs1.')) B.prepareInstallToken?.(code).catch(() => {});
+    B.maybePrepareInstallToken(code);
     return code;
   };
 
