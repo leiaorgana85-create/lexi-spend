@@ -15,6 +15,7 @@
   window.addEventListener('message', event => {
     const d = event.data || {};
     if (d.type === 'lexi-spend-bridge-ready') {
+      if (!B.frame?.contentWindow || event.source !== B.frame.contentWindow) return;
       if (!B.allowedOrigin(event.origin)) return;
       B.target = event.source;
       B.origin = event.origin;
@@ -34,7 +35,7 @@
     }
   });
 
-  B.authGoogle = (credential, currentCredential = '') => B.waitReady().then(() => new Promise((resolve, reject) => {
+  B.authGoogle = (credential, currentCredential = '', allowRelink = false) => B.waitReady().then(() => new Promise((resolve, reject) => {
     const id = `lexi-google-${Date.now()}-${B.nextId++}`;
     const timer = setTimeout(() => {
       B.pending.delete(id);
@@ -45,7 +46,8 @@
       type: 'lexi-spend-auth-google',
       id,
       credential: String(credential || ''),
-      currentCredential: String(currentCredential || '')
+      currentCredential: String(currentCredential || ''),
+      allowRelink: Boolean(allowRelink)
     }, B.origin);
   }));
 
