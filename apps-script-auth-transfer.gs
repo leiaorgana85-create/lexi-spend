@@ -11,18 +11,24 @@ const LEXI_SPEND_MAX_SESSIONS = 12;
 const LEXI_SPEND_INSTALL_HASH_PROP = 'LEXI_SPEND_INSTALL_TOKEN_HASH_V1';
 const LEXI_SPEND_INSTALL_EXPIRES_PROP = 'LEXI_SPEND_INSTALL_TOKEN_EXPIRES_V1';
 
-function authGoogleBootstrap(credential, currentCredential) {
+function authGoogleBootstrap(credential, currentCredential, allowRelink) {
   const identity = verifyLexiSpendGoogleCredential_(credential);
   const props = PropertiesService.getScriptProperties();
   const linkedSub = String(props.getProperty(LEXI_SPEND_GOOGLE_SUB_PROP) || '').trim();
   let linkedNow = false;
+  let relinked = false;
 
   if (!linkedSub) {
     assertLexiSpendExistingCredential_(currentCredential);
     props.setProperty(LEXI_SPEND_GOOGLE_SUB_PROP, identity.sub);
     linkedNow = true;
   } else if (identity.sub !== linkedSub) {
-    throw new Error('This Google account is not linked to Lexi Spend.');
+    if (!allowRelink) {
+      throw new Error('This Google account is not linked to Lexi Spend.');
+    }
+    assertLexiSpendExistingCredential_(currentCredential);
+    props.setProperty(LEXI_SPEND_GOOGLE_SUB_PROP, identity.sub);
+    relinked = true;
   }
 
   // Retire any stale state from the temporary cookie-transfer experiment.
@@ -33,13 +39,14 @@ function authGoogleBootstrap(credential, currentCredential) {
   return {
     sessionToken: session.sessionToken,
     expiresAt: session.expiresAt,
-    linkedNow: linkedNow
+    linkedNow: linkedNow,
+    relinked: relinked
   };
 }
 
 function assertLexiSpendExistingCredential_(credential) {
   const value = String(credential || '').trim();
-  if (!value) throw new Error('First Google link requires existing Lexi Spend authorization on this device.');
+  if (!value) throw new Error('First Google link or relink requires existing Lexi Spend authorization on this device.');
   if (value.startsWith('lxs1.')) {
     assertLexiSpendTransferSession_(value);
     return;
