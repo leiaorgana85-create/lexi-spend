@@ -18,9 +18,9 @@
     try { return await B.call(name, params, code); }
     catch (e) {
       const msg = String(e?.message || e || '');
-      if (retry && /invalid lexi spend api code|missing lexi spend api code/i.test(msg)) {
+      if (retry && /invalid lexi spend api code|missing lexi spend api code|invalid lexi spend session|expired lexi spend session/i.test(msg)) {
         B.clearCode();
-        B.showGate('That API code was not accepted. Enter the current private code.');
+        B.showGate('Saved authorization was not accepted. Enter the current private API code.');
         return B.call(name, params, await B.ensureCode());
       }
       throw e;
