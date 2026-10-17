@@ -57,7 +57,7 @@ Auth implementation files:
 - `apps-script-auth-transfer.gs` — Google ID verification, linked-account state, session issuance/hash validation and relink authorization.
 - `apps-script-bridge.html` — Apps Script iframe bridge.
 
-**Deployment state, 2026-10-17:** the owner previously deployed the Google-bootstrap version of `AuthTransfer.gs` and `Bridge.html`. The repository now contains an additional audit-hardening pass (exact iframe binding + explicit credential-backed relink), so those two live Apps Script files must be updated and the existing web-app deployment released as a new version before the phone verification. GitHub Pages frontend files, including the scoped v35 service worker, deploy from `main` automatically. End-to-end iPhone replacement verification is still pending.
+**Deployment state, 2026-10-17:** the owner previously deployed the Google-bootstrap version of `AuthTransfer.gs` and `Bridge.html`. The repository now contains an additional audit-hardening pass (exact iframe binding + explicit credential-backed relink), so those two live Apps Script files must be updated and the existing web-app deployment released as a new version before the phone verification. The newly captured `apps-script-code.gs` also requires one live update described below before that same release. GitHub Pages frontend files, including the scoped v35 service worker, deploy from `main` automatically. End-to-end iPhone replacement verification is still pending.
 
 ## Existing backend contract
 
@@ -99,10 +99,11 @@ The `Stays` tab owns stay names/dates, rent and stay-specific fixed/extra costs.
 ## Source-control / deployment discipline
 
 - Fetch the current default-branch target file and current SHA before every GitHub write; make the smallest targeted change; re-fetch afterward.
+- `apps-script-code.gs` is now the canonical repository source for live main `Code.gs` business logic.
 - `apps-script-auth-transfer.gs` is the repository source for live `AuthTransfer.gs`.
 - `apps-script-bridge.html` is the repository source for the live bridge HTML file.
 - Changing a GitHub Apps Script copy does **not** update the installed standalone Apps Script project; deploy live Apps Script changes explicitly through the existing deployment so its production URL remains unchanged.
-- **Audit gap still open:** the complete current live `Lexi Spend API` main `Code.gs` business-logic file has not yet been captured as an exact repository snapshot. Do not synthesize it from the compressed frontend or old bound-script copies. Capture the exact live `Code.gs` bytes into GitHub when the live source can be read/copied, then verify the repository copy against that source.
+- The owner-provided current live `Code.gs` was captured and reviewed on 2026-10-17; its SHA-256 was `6008925fae24415bceb7370f70a397740dcb491a08fcf51dabc20f2764bb418d`. That live source contained the private receipt Drive-folder ID as a source-code literal, so the exact original bytes were **not** committed to the public repository. `apps-script-code.gs` preserves the business logic and externalizes only that private value to Script Property `LEXI_SPEND_RECEIPT_ROOT_FOLDER_ID` (plus repository comments). Before replacing live `Code.gs`, create that Script Property with the existing receipt-folder ID; then deploy the repo source and verify receipt upload/delete behavior.
 - Do not expose private Google Sheet IDs beyond already-established project references, receipt-folder IDs, OAuth client secrets, access tokens, API codes or other credentials in public source.
 
 ## Regression checklist
