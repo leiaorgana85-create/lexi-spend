@@ -35,19 +35,11 @@
       return;
     }
 
-    if (data.type === 'lexi-spend-auth-mint') {
+    if (data.type === 'lexi-spend-auth-google') {
       google.script.run
         .withSuccessHandler(result => post('lexi-spend-auth-result', id, true, result, ''))
         .withFailureHandler(error => post('lexi-spend-auth-result', id, false, null, error && error.message ? error.message : String(error)))
-        .authMintInstallToken(String(data.apiCode || ''));
-      return;
-    }
-
-    if (data.type === 'lexi-spend-auth-redeem') {
-      google.script.run
-        .withSuccessHandler(result => post('lexi-spend-auth-result', id, true, result, ''))
-        .withFailureHandler(error => post('lexi-spend-auth-result', id, false, null, error && error.message ? error.message : String(error)))
-        .authRedeemInstallToken(String(data.token || ''));
+        .authGoogleBootstrap(String(data.credential || ''), String(data.currentCredential || ''));
     }
   });
 
