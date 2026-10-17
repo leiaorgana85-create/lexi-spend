@@ -4,8 +4,6 @@
     URL: 'https://script.google.com/macros/s/AKfycby084l1Rupc838tdinecb2J5NCdOurkIa-smKFJqhypYINd_5walm15NLMWH7vSPWrA/exec',
     KEY: 'lexiSpendPrivateApiCodeV1',
     LEGACY_COOKIE: 'lexi_spend_api_code_v1',
-    INSTALL_COOKIE: 'lexi_spend_install_v1',
-    INSTALL_COOKIE_PATH: '/lexi-spend/',
     DB_NAME: 'lexi-spend-auth-v1',
     DB_STORE: 'kv',
     DB_KEY: 'apiCode',
@@ -24,8 +22,6 @@
     warmStarted: false
   };
 
-  B.isStandalone = () => window.matchMedia?.('(display-mode: standalone)').matches || window.navigator.standalone === true;
-
   B.readCookie = name => {
     try {
       const prefix = `${name}=`;
@@ -36,14 +32,6 @@
 
   B.clearLegacyCookie = () => {
     try { document.cookie = `${B.LEGACY_COOKIE}=; Max-Age=0; Path=/; SameSite=Lax; Secure`; } catch (_) {}
-  };
-
-  B.getInstallCookie = () => B.readCookie(B.INSTALL_COOKIE);
-  B.setInstallCookie = token => {
-    try { document.cookie = `${B.INSTALL_COOKIE}=${encodeURIComponent(token)}; Max-Age=600; Path=${B.INSTALL_COOKIE_PATH}; SameSite=Strict; Secure`; } catch (_) {}
-  };
-  B.clearInstallCookie = () => {
-    try { document.cookie = `${B.INSTALL_COOKIE}=; Max-Age=0; Path=${B.INSTALL_COOKIE_PATH}; SameSite=Strict; Secure`; } catch (_) {}
   };
 
   B.openDb = () => new Promise((resolve, reject) => {
@@ -101,15 +89,9 @@
     try { return String(localStorage.getItem(B.KEY) || '').trim(); } catch (_) { return ''; }
   };
 
-  B.maybePrepareInstallToken = code => {
-    const value = String(code || '').trim();
-    if (!value || B.isStandalone() || value.startsWith('lxs1.')) return;
-    B.prepareInstallToken?.(value).catch(() => {});
-  };
-
   B.storeCode = async value => {
     const code = String(value || '').trim();
-    if (!code) throw new Error('API code is required.');
+    if (!code) throw new Error('Authorization is required.');
     let localSaved = false;
     try {
       localStorage.setItem(B.KEY, code);
@@ -128,16 +110,16 @@
     const immediate = B.getCode();
     if (immediate) {
       B.clearLegacyCookie();
-      B.maybePrepareInstallToken(immediate);
       return immediate;
     }
 
+    // One-time migration only: an older build stored the root API code in a cookie.
+    // Move it into device-local storage and immediately remove that cookie.
     const legacy = B.readCookie(B.LEGACY_COOKIE);
     if (legacy) {
       try {
         await B.storeCode(legacy);
         B.clearLegacyCookie();
-        B.maybePrepareInstallToken(legacy);
         return legacy;
       } catch (_) {}
     }
@@ -146,25 +128,21 @@
     if (indexed) {
       try { localStorage.setItem(B.KEY, indexed); } catch (_) {}
       B.clearLegacyCookie();
-      B.maybePrepareInstallToken(indexed);
       return indexed;
     }
 
-    const transferred = await B.redeemInstallToken?.();
-    return transferred || '';
+    return '';
   };
 
   B.saveCode = async value => {
     const code = await B.storeCode(value);
     B.clearLegacyCookie();
-    B.maybePrepareInstallToken(code);
     return code;
   };
 
   B.clearCode = () => {
     try { localStorage.removeItem(B.KEY); } catch (_) {}
     B.clearLegacyCookie();
-    B.clearInstallCookie();
     B.deleteIndexedCode();
   };
 
