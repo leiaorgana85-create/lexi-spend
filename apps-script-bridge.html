@@ -39,7 +39,11 @@
       google.script.run
         .withSuccessHandler(result => post('lexi-spend-auth-result', id, true, result, ''))
         .withFailureHandler(error => post('lexi-spend-auth-result', id, false, null, error && error.message ? error.message : String(error)))
-        .authGoogleBootstrap(String(data.credential || ''), String(data.currentCredential || ''));
+        .authGoogleBootstrap(
+          String(data.credential || ''),
+          String(data.currentCredential || ''),
+          Boolean(data.allowRelink)
+        );
     }
   });
 
