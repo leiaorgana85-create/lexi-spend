@@ -1,63 +1,99 @@
-// Lexi Spend secure Home Screen reinstall transfer.
+// Lexi Spend secure reinstall authorization.
 // Add this file to the live "Lexi Spend API" Apps Script project.
 // It reuses the existing Code.gs helpers assertLexiSpendApiCode_(),
 // lexiSpendSha256Hex_(), and runLexiSpendApiFunction_().
 
-const LEXI_SPEND_INSTALL_HASH_PROP = 'LEXI_SPEND_INSTALL_TOKEN_HASH_V1';
-const LEXI_SPEND_INSTALL_EXPIRES_PROP = 'LEXI_SPEND_INSTALL_TOKEN_EXPIRES_V1';
+const LEXI_SPEND_GOOGLE_CLIENT_ID = '543436064136-27a477uk691qocpaft25q925lg88hl98.apps.googleusercontent.com';
+const LEXI_SPEND_GOOGLE_SUB_PROP = 'LEXI_SPEND_GOOGLE_SUB_V1';
 const LEXI_SPEND_SESSION_PROP = 'LEXI_SPEND_TRANSFER_SESSIONS_V1';
-const LEXI_SPEND_INSTALL_TTL_MS = 10 * 60 * 1000;
 const LEXI_SPEND_SESSION_TTL_MS = 365 * 24 * 60 * 60 * 1000;
 const LEXI_SPEND_MAX_SESSIONS = 12;
+const LEXI_SPEND_INSTALL_HASH_PROP = 'LEXI_SPEND_INSTALL_TOKEN_HASH_V1';
+const LEXI_SPEND_INSTALL_EXPIRES_PROP = 'LEXI_SPEND_INSTALL_TOKEN_EXPIRES_V1';
 
-function authMintInstallToken(apiCode) {
-  assertLexiSpendApiCode_(apiCode);
-  const token = 'lxi1.' + Utilities.getUuid().replace(/-/g, '') + Utilities.getUuid().replace(/-/g, '');
-  const expiresAt = Date.now() + LEXI_SPEND_INSTALL_TTL_MS;
-  PropertiesService.getScriptProperties().setProperties({
-    [LEXI_SPEND_INSTALL_HASH_PROP]: lexiSpendSha256Hex_(token),
-    [LEXI_SPEND_INSTALL_EXPIRES_PROP]: String(expiresAt)
-  }, false);
-  return { token: token, expiresAt: new Date(expiresAt).toISOString() };
+function authGoogleBootstrap(credential, currentCredential) {
+  const identity = verifyLexiSpendGoogleCredential_(credential);
+  const props = PropertiesService.getScriptProperties();
+  const linkedSub = String(props.getProperty(LEXI_SPEND_GOOGLE_SUB_PROP) || '').trim();
+  let linkedNow = false;
+
+  if (!linkedSub) {
+    assertLexiSpendExistingCredential_(currentCredential);
+    props.setProperty(LEXI_SPEND_GOOGLE_SUB_PROP, identity.sub);
+    linkedNow = true;
+  } else if (identity.sub !== linkedSub) {
+    throw new Error('This Google account is not linked to Lexi Spend.');
+  }
+
+  // Retire any stale state from the temporary cookie-transfer experiment.
+  props.deleteProperty(LEXI_SPEND_INSTALL_HASH_PROP);
+  props.deleteProperty(LEXI_SPEND_INSTALL_EXPIRES_PROP);
+
+  const session = issueLexiSpendSession_();
+  return {
+    sessionToken: session.sessionToken,
+    expiresAt: session.expiresAt,
+    linkedNow: linkedNow
+  };
 }
 
-function authRedeemInstallToken(token) {
-  const lock = LockService.getScriptLock();
-  lock.waitLock(15000);
-  try {
-    const value = String(token || '').trim();
-    if (!value) throw new Error('Missing Lexi Spend install token.');
-
-    const props = PropertiesService.getScriptProperties();
-    const savedHash = props.getProperty(LEXI_SPEND_INSTALL_HASH_PROP);
-    const expiresAt = Number(props.getProperty(LEXI_SPEND_INSTALL_EXPIRES_PROP) || 0);
-
-    if (!savedHash || !expiresAt || Date.now() > expiresAt) {
-      props.deleteProperty(LEXI_SPEND_INSTALL_HASH_PROP);
-      props.deleteProperty(LEXI_SPEND_INSTALL_EXPIRES_PROP);
-      throw new Error('Lexi Spend install token expired.');
-    }
-
-    if (lexiSpendSha256Hex_(value) !== savedHash) {
-      throw new Error('Invalid Lexi Spend install token.');
-    }
-
-    props.deleteProperty(LEXI_SPEND_INSTALL_HASH_PROP);
-    props.deleteProperty(LEXI_SPEND_INSTALL_EXPIRES_PROP);
-
-    const sessionToken = 'lxs1.' + Utilities.getUuid().replace(/-/g, '') + Utilities.getUuid().replace(/-/g, '');
-    const sessions = readLexiSpendTransferSessions_();
-    const now = Date.now();
-    sessions.push({ hash: lexiSpendSha256Hex_(sessionToken), expiresAt: now + LEXI_SPEND_SESSION_TTL_MS });
-    const active = sessions
-      .filter(item => item && item.hash && Number(item.expiresAt) > now)
-      .slice(-LEXI_SPEND_MAX_SESSIONS);
-    props.setProperty(LEXI_SPEND_SESSION_PROP, JSON.stringify(active));
-
-    return { sessionToken: sessionToken, expiresAt: new Date(now + LEXI_SPEND_SESSION_TTL_MS).toISOString() };
-  } finally {
-    lock.releaseLock();
+function assertLexiSpendExistingCredential_(credential) {
+  const value = String(credential || '').trim();
+  if (!value) throw new Error('First Google link requires existing Lexi Spend authorization on this device.');
+  if (value.startsWith('lxs1.')) {
+    assertLexiSpendTransferSession_(value);
+    return;
   }
+  assertLexiSpendApiCode_(value);
+}
+
+function verifyLexiSpendGoogleCredential_(credential) {
+  const token = String(credential || '').trim();
+  if (!token) throw new Error('Google sign-in credential is missing.');
+
+  const response = UrlFetchApp.fetch(
+    'https://oauth2.googleapis.com/tokeninfo?id_token=' + encodeURIComponent(token),
+    { muteHttpExceptions: true }
+  );
+  if (response.getResponseCode() !== 200) {
+    throw new Error('Google sign-in could not be verified.');
+  }
+
+  let data;
+  try {
+    data = JSON.parse(response.getContentText());
+  } catch (_) {
+    throw new Error('Google sign-in response was invalid.');
+  }
+
+  const issuer = String(data.iss || '');
+  if (String(data.aud || '') !== LEXI_SPEND_GOOGLE_CLIENT_ID) {
+    throw new Error('Google sign-in audience mismatch.');
+  }
+  if (issuer !== 'accounts.google.com' && issuer !== 'https://accounts.google.com') {
+    throw new Error('Google sign-in issuer mismatch.');
+  }
+  if (String(data.email_verified || '').toLowerCase() !== 'true') {
+    throw new Error('Google account email is not verified.');
+  }
+  if (!data.sub || Number(data.exp || 0) * 1000 <= Date.now()) {
+    throw new Error('Google sign-in credential expired.');
+  }
+
+  return { sub: String(data.sub) };
+}
+
+function issueLexiSpendSession_() {
+  const sessionToken = 'lxs1.' + Utilities.getUuid().replace(/-/g, '') + Utilities.getUuid().replace(/-/g, '');
+  const sessions = readLexiSpendTransferSessions_();
+  const now = Date.now();
+  const expiresAt = now + LEXI_SPEND_SESSION_TTL_MS;
+  sessions.push({ hash: lexiSpendSha256Hex_(sessionToken), expiresAt: expiresAt });
+  const active = sessions
+    .filter(item => item && item.hash && Number(item.expiresAt) > now)
+    .slice(-LEXI_SPEND_MAX_SESSIONS);
+  PropertiesService.getScriptProperties().setProperty(LEXI_SPEND_SESSION_PROP, JSON.stringify(active));
+  return { sessionToken: sessionToken, expiresAt: new Date(expiresAt).toISOString() };
 }
 
 function authBridgeExecuteSession(sessionToken, functionName, parameters) {
