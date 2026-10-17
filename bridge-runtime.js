@@ -51,6 +51,7 @@
   B.prepareInstallToken = async code => {
     const value = String(code || '').trim();
     if (!value || B.isStandalone() || value.startsWith('lxs1.')) return false;
+    if (B.getInstallCookie()) return true;
     try {
       const result = await B.authRequest('mint', { apiCode: value });
       if (!result?.token) return false;
