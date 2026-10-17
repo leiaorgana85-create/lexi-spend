@@ -34,6 +34,8 @@ Spend Log Google Sheet + receipt folder
 
 The frontend preserves the existing Spend UI and routes the original `google.script.run` call pattern through a compatibility bridge. Google/OAuth/API traffic is not service-worker cached. Same-origin app-shell assets use network-first behavior with offline cache fallback.
 
+Service-worker ownership is path/cache scoped. Current shell cache is `lexi-spend-v35`; activation cleanup may delete only older cache names beginning with `lexi-spend-v`. It must never delete Music, Notes or Parents Player caches on the shared `leiaorgana85-create.github.io` origin. The five `bridge-*.js` auth/transport files are force-fetched with `cache: no-store` before falling back to the Spend cache so an existing PWA cannot silently keep a pre-audit auth bridge after deployment.
+
 ## Authentication / Home Screen replacement
 
 - The private Spend API code remains the root/recovery credential. The server validates it using the existing root-code hash; never commit or expose the root code.
@@ -55,7 +57,7 @@ Auth implementation files:
 - `apps-script-auth-transfer.gs` — Google ID verification, linked-account state, session issuance/hash validation and relink authorization.
 - `apps-script-bridge.html` — Apps Script iframe bridge.
 
-**Deployment state, 2026-10-17:** the owner previously deployed the Google-bootstrap version of `AuthTransfer.gs` and `Bridge.html`. The repository now contains an additional audit-hardening pass (exact iframe binding + explicit credential-backed relink), so those two live Apps Script files must be updated and the existing web-app deployment released as a new version before the phone verification. GitHub Pages frontend files deploy from `main` automatically. End-to-end iPhone replacement verification is still pending.
+**Deployment state, 2026-10-17:** the owner previously deployed the Google-bootstrap version of `AuthTransfer.gs` and `Bridge.html`. The repository now contains an additional audit-hardening pass (exact iframe binding + explicit credential-backed relink), so those two live Apps Script files must be updated and the existing web-app deployment released as a new version before the phone verification. GitHub Pages frontend files, including the scoped v35 service worker, deploy from `main` automatically. End-to-end iPhone replacement verification is still pending.
 
 ## Existing backend contract
 
