@@ -3,7 +3,9 @@
   const B = window.LexiSpendBridge = {
     URL: 'https://script.google.com/macros/s/AKfycby084l1Rupc838tdinecb2J5NCdOurkIa-smKFJqhypYINd_5walm15NLMWH7vSPWrA/exec',
     KEY: 'lexiSpendPrivateApiCodeV1',
-    COOKIE: 'lexi_spend_api_code_v1',
+    LEGACY_COOKIE: 'lexi_spend_api_code_v1',
+    INSTALL_COOKIE: 'lexi_spend_install_v1',
+    INSTALL_COOKIE_PATH: '/lexi-spend/',
     DB_NAME: 'lexi-spend-auth-v1',
     DB_STORE: 'kv',
     DB_KEY: 'apiCode',
@@ -22,33 +24,30 @@
     warmStarted: false
   };
 
-  B.getCookie = () => {
+  B.isStandalone = () => window.matchMedia?.('(display-mode: standalone)').matches || window.navigator.standalone === true;
+
+  B.readCookie = name => {
     try {
-      const prefix = `${B.COOKIE}=`;
+      const prefix = `${name}=`;
       const row = document.cookie.split('; ').find(v => v.startsWith(prefix));
       return row ? decodeURIComponent(row.slice(prefix.length)).trim() : '';
-    } catch (_) {
-      return '';
-    }
+    } catch (_) { return ''; }
   };
 
-  B.setCookie = code => {
-    try {
-      document.cookie = `${B.COOKIE}=${encodeURIComponent(code)}; Max-Age=31536000; Path=/; SameSite=Lax; Secure`;
-    } catch (_) {}
+  B.clearLegacyCookie = () => {
+    try { document.cookie = `${B.LEGACY_COOKIE}=; Max-Age=0; Path=/; SameSite=Lax; Secure`; } catch (_) {}
   };
 
-  B.clearCookie = () => {
-    try {
-      document.cookie = `${B.COOKIE}=; Max-Age=0; Path=/; SameSite=Lax; Secure`;
-    } catch (_) {}
+  B.getInstallCookie = () => B.readCookie(B.INSTALL_COOKIE);
+  B.setInstallCookie = token => {
+    try { document.cookie = `${B.INSTALL_COOKIE}=${encodeURIComponent(token)}; Max-Age=600; Path=${B.INSTALL_COOKIE_PATH}; SameSite=Strict; Secure`; } catch (_) {}
+  };
+  B.clearInstallCookie = () => {
+    try { document.cookie = `${B.INSTALL_COOKIE}=; Max-Age=0; Path=${B.INSTALL_COOKIE_PATH}; SameSite=Strict; Secure`; } catch (_) {}
   };
 
   B.openDb = () => new Promise((resolve, reject) => {
-    if (!('indexedDB' in window)) {
-      reject(new Error('IndexedDB unavailable.'));
-      return;
-    }
+    if (!('indexedDB' in window)) { reject(new Error('IndexedDB unavailable.')); return; }
     const req = indexedDB.open(B.DB_NAME, 1);
     req.onupgradeneeded = () => {
       const db = req.result;
@@ -70,9 +69,7 @@
         tx.onerror = () => db.close();
         tx.onabort = () => db.close();
       });
-    } catch (_) {
-      return '';
-    }
+    } catch (_) { return ''; }
   };
 
   B.writeIndexedCode = async code => {
@@ -101,24 +98,10 @@
   };
 
   B.getCode = () => {
-    try {
-      const local = String(localStorage.getItem(B.KEY) || '').trim();
-      if (local) return local;
-    } catch (_) {}
-    return B.getCookie();
+    try { return String(localStorage.getItem(B.KEY) || '').trim(); } catch (_) { return ''; }
   };
 
-  B.getCodeDurable = async () => {
-    const immediate = B.getCode();
-    if (immediate) return immediate;
-    const indexed = await B.readIndexedCode();
-    if (!indexed) return '';
-    try { localStorage.setItem(B.KEY, indexed); } catch (_) {}
-    B.setCookie(indexed);
-    return indexed;
-  };
-
-  B.saveCode = async value => {
+  B.storeCode = async value => {
     const code = String(value || '').trim();
     if (!code) throw new Error('API code is required.');
     let localSaved = false;
@@ -126,32 +109,57 @@
       localStorage.setItem(B.KEY, code);
       localSaved = String(localStorage.getItem(B.KEY) || '').trim() === code;
     } catch (_) {}
-    B.setCookie(code);
     let indexedSaved = false;
     try {
       await B.writeIndexedCode(code);
       indexedSaved = (await B.readIndexedCode()) === code;
     } catch (_) {}
-    if (!localSaved && B.getCookie() !== code && !indexedSaved) {
-      throw new Error('Safari did not allow Lexi Spend to save the API code on this device.');
+    if (!localSaved && !indexedSaved) throw new Error('Safari did not allow Lexi Spend to save authorization on this device.');
+    return code;
+  };
+
+  B.getCodeDurable = async () => {
+    const immediate = B.getCode();
+    if (immediate) { B.clearLegacyCookie(); return immediate; }
+
+    const legacy = B.readCookie(B.LEGACY_COOKIE);
+    if (legacy) {
+      try {
+        await B.storeCode(legacy);
+        B.clearLegacyCookie();
+        return legacy;
+      } catch (_) {}
     }
+
+    const indexed = await B.readIndexedCode();
+    if (indexed) {
+      try { localStorage.setItem(B.KEY, indexed); } catch (_) {}
+      B.clearLegacyCookie();
+      return indexed;
+    }
+
+    const transferred = await B.redeemInstallToken?.();
+    return transferred || '';
+  };
+
+  B.saveCode = async value => {
+    const code = await B.storeCode(value);
+    B.clearLegacyCookie();
+    if (!B.isStandalone() && !code.startsWith('lxs1.')) B.prepareInstallToken?.(code).catch(() => {});
     return code;
   };
 
   B.clearCode = () => {
     try { localStorage.removeItem(B.KEY); } catch (_) {}
-    B.clearCookie();
+    B.clearLegacyCookie();
+    B.clearInstallCookie();
     B.deleteIndexedCode();
   };
 
   B.allowedOrigin = origin => {
     try {
       const u = new URL(origin);
-      return u.protocol === 'https:' && (
-        u.hostname === 'script.google.com' ||
-        u.hostname === 'script.googleusercontent.com' ||
-        u.hostname.endsWith('.googleusercontent.com')
-      );
+      return u.protocol === 'https:' && (u.hostname === 'script.google.com' || u.hostname === 'script.googleusercontent.com' || u.hostname.endsWith('.googleusercontent.com'));
     } catch (_) { return false; }
   };
 
@@ -163,7 +171,6 @@
   B.ensureFrame = () => {
     if (B.frame && B.frame.isConnected) return B.frame;
     if (!document.body) return null;
-
     const f = document.createElement('iframe');
     f.id = 'lexiSpendApiBridge';
     f.title = 'Lexi Spend private API bridge';
@@ -189,34 +196,23 @@
   B.warmBridge = () => {
     if (B.warmStarted) return;
     B.warmStarted = true;
-
     const start = () => {
       if (B.frame && B.frame.isConnected) return true;
       if (!document.body) return false;
       B.ensureFrame();
       return true;
     };
-
     if (start()) return;
-
-    const observer = new MutationObserver(() => {
-      if (start()) observer.disconnect();
-    });
+    const observer = new MutationObserver(() => { if (start()) observer.disconnect(); });
     observer.observe(document.documentElement, { childList: true, subtree: true });
-
-    document.addEventListener('DOMContentLoaded', () => {
-      start();
-      observer.disconnect();
-    }, { once: true });
+    document.addEventListener('DOMContentLoaded', () => { start(); observer.disconnect(); }, { once: true });
   };
 
   B.waitReady = () => {
     if (B.ready && B.target && B.origin) return Promise.resolve();
     if (B.readyPromise) return B.readyPromise;
-
     B.warmBridge();
     B.ensureFrame();
-
     B.readyPromise = new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
         if (B.ready) return;
@@ -224,13 +220,8 @@
         B.readyResolve = null;
         reject(new Error('Could not connect to the Lexi Spend backend.'));
       }, B.readyTimeoutMs);
-
-      B.readyResolve = () => {
-        clearTimeout(timer);
-        resolve();
-      };
+      B.readyResolve = () => { clearTimeout(timer); resolve(); };
     });
-
     return B.readyPromise;
   };
 })();
