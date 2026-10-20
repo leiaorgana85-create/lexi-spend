@@ -1,0 +1,41 @@
+/* Lexi Spend v2 — v1 neutral dark palette. */
+:root {
+  --bg:#0f1115;
+  --surface:#171a20;
+  --surface-2:#1a1e24;
+  --field:#1d2128;
+  --line:#30343c;
+  --line-strong:#4b5563;
+  --text:#f3f4f6;
+  --muted:#9ca3af;
+  --soft:#737d8b;
+  --accent:#f3f4f6;
+  --accent-strong:#f3f4f6;
+  --accent-deep:#d1d5db;
+  --danger:#fca5a5;
+  --warning:#f59e0b;
+  --ok:#86efac;
+}
+html, body { background:#0f1115; }
+
+/* Screen names are already explicit in bottom navigation; keep only functional context rows. */
+.screen-heading { min-height:22px; margin-bottom:4px; }
+.screen-heading h2 { display:none; }
+.app-header { background:rgba(15,17,21,.96); }
+.lexi-tabbar { background:rgba(15,17,21,.98); }
+.lexi-tab { color:#8b929c; }
+.lexi-tab.active { color:#f3f4f6; }
+input:focus, select:focus, textarea:focus {
+  border-color:#6b7280;
+  box-shadow:0 0 0 1px rgba(107,114,128,.18);
+}
+.primary-button {
+  border-color:#d1d5db;
+  background:#f3f4f6;
+  color:#111827;
+}
+.primary-button:active { background:#d1d5db; }
+.progress-track { background:#30343c; }
+.progress-fill { background:#6f8f78; }
+.calendar-day.outside { color:#59616d; background:#111318; }
+.receipt-toast { border-color:#355443; background:#17231c; color:var(--ok); }

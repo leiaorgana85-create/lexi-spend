@@ -1,0 +1,248 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+  <meta name="theme-color" content="#0f1115">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Lexi Spend v2">
+  <title>Lexi Spend v2</title>
+  <link rel="preconnect" href="https://script.google.com">
+  <link rel="preconnect" href="https://script.googleusercontent.com">
+  <link rel="manifest" href="./manifest.webmanifest">
+  <link rel="apple-touch-icon" href="https://leiaorgana85-create.github.io/lexi-assets/spend-logo.png?v=2">
+  <link rel="stylesheet" href="./styles.css">
+  <link rel="stylesheet" href="./theme.css">
+  <link rel="stylesheet" href="./track.css">
+</head>
+<body data-active-view="track">
+  <script src="./api.js"></script>
+
+  <header class="app-header">
+    <div>
+      <div class="eyebrow">LEXI</div>
+      <h1>Spend</h1>
+    </div>
+    <div class="header-actions">
+      <div id="connectionBadge" class="status-badge">Connecting</div>
+      <button id="settingsButton" class="icon-button" type="button" aria-label="Settings" title="Settings">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7Z"/>
+          <path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-1.86 1.86-.06-.06A1.7 1.7 0 0 0 16 18.4a1.7 1.7 0 0 0-1 .6 1.7 1.7 0 0 0-.4 1.1V20h-2.6v-.08A1.7 1.7 0 0 0 11 18.4a1.7 1.7 0 0 0-1.88.34l-.06.06-1.86-1.86.06-.06A1.7 1.7 0 0 0 7.6 15a1.7 1.7 0 0 0-.6-1 1.7 1.7 0 0 0-1.1-.4H5.8V11h.08A1.7 1.7 0 0 0 7.6 10a1.7 1.7 0 0 0-.34-1.88l-.06-.06L9.06 6.2l.06.06A1.7 1.7 0 0 0 11 6.6a1.7 1.7 0 0 0 1-.6 1.7 1.7 0 0 0 .4-1.1V4.8H15v.08A1.7 1.7 0 0 0 16 6.6a1.7 1.7 0 0 0 1.88-.34l.06-.06 1.86 1.86-.06.06A1.7 1.7 0 0 0 19.4 10c.28.34.49.72.6 1 .08.2.1.38.1.6v.08H20v2.6h-.08a1.7 1.7 0 0 0-1.72 1.1c-.08.2-.1.38-.1.62Z"/>
+        </svg>
+      </button>
+    </div>
+  </header>
+
+  <main class="app-main">
+    <section id="trackScreen" class="screen active" data-screen="track" aria-label="Track">
+      <section class="v1-converter-card" aria-label="Quick USD converter">
+        <div class="v1-converter-label">Convert</div>
+        <div class="v1-converter-row">
+          <span id="converterSymbol" class="v1-converter-symbol" aria-hidden="true">฿</span>
+          <input id="converterAmount" class="v1-converter-input" type="text" inputmode="decimal" autocomplete="off" aria-label="Amount to convert to US dollars" placeholder="0">
+          <span class="v1-converter-arrow" aria-hidden="true">→</span>
+          <output id="converterUsd" class="v1-converter-output" aria-live="polite">$—</output>
+          <span id="converterStatus" class="v1-converter-status" aria-live="polite"></span>
+        </div>
+      </section>
+
+      <form id="expenseForm" class="v1-entry-card" novalidate>
+        <div class="v1-row">
+          <div class="v1-field">
+            <label for="merchant">Merchant</label>
+            <div class="v1-clear-wrap">
+              <input id="merchant" name="merchant" type="text" autocomplete="off" placeholder="" required>
+              <button id="clearMerchant" class="v1-clear-field" type="button" aria-label="Clear merchant">×</button>
+            </div>
+          </div>
+          <div class="v1-field">
+            <label for="category">Category</label>
+            <select id="category" name="category" required></select>
+          </div>
+        </div>
+
+        <div class="v1-field v1-amount-full">
+          <label for="expenseAmount">Amount</label>
+          <div class="v1-clear-wrap">
+            <input id="expenseAmount" name="amount" type="number" inputmode="decimal" min="0" step="0.01" placeholder="0" required>
+            <button id="clearAmount" class="v1-clear-field" type="button" aria-label="Clear amount">×</button>
+          </div>
+        </div>
+
+        <div id="expenseUsdPreview" class="v1-usd-preview"></div>
+
+        <div class="v1-currency-payment-row">
+          <div class="v1-field">
+            <label for="expenseCurrency">Currency</label>
+            <select id="expenseCurrency" name="currency" required></select>
+          </div>
+          <div class="v1-payment-block">
+            <span class="v1-payment-label">Payment</span>
+            <div class="v1-payment-toggle">
+              <button id="payCard" class="v1-pay-btn active" type="button">Card</button>
+              <button id="payCash" class="v1-pay-btn" type="button">Cash</button>
+            </div>
+            <input id="paymentMethod" name="paymentMethod" type="hidden" value="Card">
+          </div>
+        </div>
+
+        <div class="v1-date-bar">
+          <div id="dateMain" class="v1-date-main">Today</div>
+          <div class="v1-date-change-wrap">
+            <span class="v1-change-date">Change</span>
+            <input id="expenseDate" class="v1-date-picker-overlay" name="date" type="date" required aria-label="Change date">
+          </div>
+        </div>
+
+        <button id="noteToggle" class="v1-note-toggle" type="button">+ Add note</button>
+        <div id="noteBox" class="v1-note-box" hidden>
+          <textarea id="expenseNote" name="note" placeholder="Optional note"></textarea>
+        </div>
+
+        <div class="v1-save-action-row">
+          <button id="saveExpenseButton" class="v1-primary-button" type="submit">Log Spend</button>
+          <button id="receiptButton" class="v1-receipt-button" type="button" aria-label="Save receipt to Drive" title="Save receipt">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M6 3h12v18l-3-2-3 2-3-2-3 2V3Z"/>
+              <path d="M9 8h6M9 12h6"/>
+            </svg>
+          </button>
+          <input id="receiptInput" type="file" accept="image/jpeg,image/png,image/webp" capture="environment" hidden>
+        </div>
+        <div id="expenseStatus" class="v1-expense-status" aria-live="polite"></div>
+      </form>
+
+      <section class="v1-recent-card" aria-label="Recent Spend">
+        <div class="v1-recent-title">Recent Spend</div>
+        <div id="recentTransactions" class="v1-recent-list"></div>
+      </section>
+    </section>
+
+    <section id="budgetScreen" class="screen" data-screen="budget" aria-label="Budget">
+      <section class="summary-panel budget-overview">
+        <div class="budget-progress-block">
+          <div class="budget-section-heading">
+            <div><strong>This week</strong><span id="budgetWeekDates"></span></div>
+            <span id="budgetWeekDays" class="budget-days"></span>
+          </div>
+          <div class="budget-value-row">
+            <div><span>Spent</span><strong id="weeklySpend">$0.00</strong></div>
+            <div><span>Total</span><strong id="weeklyBudget">$0.00</strong></div>
+          </div>
+          <div class="progress-track"><div id="budgetWeeklyProgress" class="progress-fill"></div></div>
+        </div>
+        <div class="budget-progress-block">
+          <div class="budget-section-heading">
+            <div><strong>This period</strong><span id="budgetPeriodDates"></span></div>
+            <span id="budgetPeriodDays" class="budget-days"></span>
+          </div>
+          <div class="budget-value-row">
+            <div><span>Spent</span><strong id="budgetTotalValue">$0.00</strong></div>
+            <div><span>Total</span><strong id="budgetTotalSub">$0.00</strong></div>
+          </div>
+          <div class="progress-track"><div id="budgetOverallProgress" class="progress-fill"></div></div>
+        </div>
+        <strong id="allTrackedSpend" hidden>$0.00</strong>
+      </section>
+      <section class="section-panel categories-panel">
+        <div class="panel-heading compact-heading"><h3>Categories</h3></div>
+        <div id="categoryBudgetList" class="budget-list"></div>
+      </section>
+    </section>
+
+    <section id="cashScreen" class="screen" data-screen="cash" aria-label="Cash">
+      <section class="summary-panel cash-overview">
+        <div class="cash-balance-row">
+          <div class="cash-balance-copy"><span>Available cash</span><strong id="cashBalance">0</strong></div>
+        </div>
+        <div class="cash-quick-metrics form-grid two">
+          <div><span>Withdrawn</span><strong id="cashWithdrawn">0</strong></div>
+          <div><span>Cash spent</span><strong id="cashSpent">0</strong></div>
+        </div>
+      </section>
+      <form id="cashForm" class="entry-panel cash-entry-panel" novalidate>
+        <div class="form-grid amount-currency-grid">
+          <label><span>Cash withdrawn</span><input id="cashAmount" type="number" inputmode="decimal" min="0" step="0.01" placeholder="0.00" required></label>
+          <label><span>Currency</span><select id="cashCurrency" required></select></label>
+        </div>
+        <div class="form-grid two cash-date-fee-grid">
+          <label><span>Date</span><input id="cashDate" type="date" required></label>
+          <label><span>ATM fee</span><input id="atmFee" type="number" inputmode="decimal" min="0" step="0.01" placeholder="0.00"></label>
+        </div>
+        <details class="cash-optional">
+          <summary>Optional</summary>
+          <div class="form-grid two cash-optional-grid">
+            <label><span>Bank USD debit</span><input id="bankDebitUsd" type="number" inputmode="decimal" min="0" step="0.01" placeholder="0.00"></label>
+            <label><span>Note</span><input id="cashNote" type="text" autocomplete="off" placeholder=""></label>
+          </div>
+        </details>
+        <button id="saveCashButton" class="v1-primary-button cash-save-button" type="submit">Add Cash</button>
+        <div class="cash-feedback-row">
+          <div id="cashUsdPreview" class="inline-preview cash-preview"></div>
+          <span id="cashStatus" class="small-muted" aria-live="polite"></span>
+        </div>
+      </form>
+      <section class="v1-recent-card cash-recent-card" aria-label="Monthly ATM fees and current month withdrawals">
+        <div class="cash-fee-compact">
+          <span>ATM fees</span><strong id="cashFees">$0.00</strong>
+        </div>
+        <div id="withdrawalsTitle" class="v1-recent-title">Withdrawals</div>
+        <div id="recentWithdrawals" class="v1-recent-list"></div>
+      </section>
+    </section>
+
+    <section id="calendarScreen" class="screen" data-screen="calendar" aria-label="Calendar">
+      <section class="calendar-panel">
+        <div class="calendar-head">
+          <button id="calendarPrevButton" class="calendar-nav-button" type="button" aria-label="Previous month">‹</button>
+          <strong id="calendarMonthTitle" class="calendar-title"></strong>
+          <button id="calendarNextButton" class="calendar-nav-button" type="button" aria-label="Next month">›</button>
+        </div>
+        <span id="calendarStatus" class="calendar-status small-muted" aria-live="polite"></span>
+        <div class="calendar-weekdays" aria-hidden="true"><div>Mon</div><div>Tue</div><div>Wed</div><div>Thu</div><div>Fri</div><div>Sat</div><div>Sun</div></div>
+        <div id="calendarGrid" class="calendar-grid" role="grid"></div>
+        <div class="calendar-detail">
+          <div class="day-detail-head"><div id="selectedDayTitle" class="day-detail-title">Select a day</div><strong id="selectedDayTotal" class="day-total">$0.00</strong></div>
+          <div id="selectedDayCategories" class="category-chips"></div>
+          <div id="selectedDayTransactions" class="calendar-transaction-list"></div>
+        </div>
+      </section>
+    </section>
+  </main>
+
+  <div id="receiptStatus" class="receipt-toast" role="status" aria-live="polite" hidden></div>
+
+  <nav id="lexiTabbar" class="lexi-tabbar" aria-label="Primary navigation">
+    <button class="lexi-tab active" type="button" data-view="track"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 19h14M7 16V9m5 7V5m5 11v-4"/></svg><span>Track</span></button>
+    <button class="lexi-tab" type="button" data-view="budget"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 18V8m5 10V5m5 13v-8m5 8V3"/></svg><span>Budget</span></button>
+    <button class="lexi-tab" type="button" data-view="cash"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16v10H4z"/><path d="M8 12h8M7 4h10v3"/></svg><span>Cash</span></button>
+    <button class="lexi-tab" type="button" data-view="calendar"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5h14v14H5zM8 3v4m8-4v4M5 9h14"/></svg><span>Calendar</span></button>
+  </nav>
+
+  <dialog id="connectDialog" class="dialog">
+    <form id="connectForm" class="dialog-body">
+      <h2>Connect Lexi Spend</h2>
+      <label><span>API code</span><input id="apiCodeInput" type="password" autocomplete="off" required></label>
+      <div id="connectStatus" class="dialog-status" aria-live="polite"></div>
+      <button id="connectButton" class="primary-button" type="submit">Connect</button>
+    </form>
+  </dialog>
+
+  <dialog id="settingsDialog" class="dialog">
+    <div class="dialog-body">
+      <div class="card-title-row"><h2>Settings</h2><button id="closeSettingsButton" class="icon-button" type="button" aria-label="Close">×</button></div>
+      <div class="settings-list">
+        <div class="settings-row"><span>Connection</span><strong id="settingsConnection">—</strong></div>
+        <div class="settings-row"><span>Backend</span><strong id="settingsBackendVersion">—</strong></div>
+        <div class="settings-row"><span>Frontend</span><strong id="settingsFrontendVersion">—</strong></div>
+      </div>
+      <div class="dialog-actions"><button id="reconnectButton" class="ghost-button" type="button">Enter API code</button><button id="forgetApiCodeButton" class="ghost-button danger-button" type="button">Forget API code</button></div>
+    </div>
+  </dialog>
+
+  <script src="./app.js"></script>
+  <script src="./track.js"></script>
+</body>
+</html>

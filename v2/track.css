@@ -1,0 +1,120 @@
+/* Track — clean reconstruction of the production v1 Spend surface. */
+.v1-converter-card {
+  display:flex; align-items:center; gap:8px; min-height:40px;
+  margin-bottom:7px; padding:5px 9px; border:1px solid var(--line);
+  border-radius:13px; background:var(--surface);
+}
+.v1-converter-label { flex:0 0 auto; color:#f7faf8; font-size:10.5px; font-weight:750; }
+.v1-converter-row { margin-left:7px; margin-right:auto; min-width:0; display:flex; align-items:center; justify-content:flex-start; gap:3px; }
+.v1-converter-symbol { flex:0 0 auto; color:var(--muted); font-size:14px; line-height:1; }
+.v1-converter-input {
+  width:116px; min-width:0; height:28px; min-height:28px; border:1px solid var(--line);
+  border-radius:8px; background:var(--field); color:var(--text); padding:2px 6px;
+  text-align:right; font-size:16px; line-height:1; font-weight:700;
+}
+.v1-converter-input:focus { border-color:var(--muted); box-shadow:none; }
+.v1-converter-arrow { flex:0 0 auto; color:var(--muted); font-size:11px; }
+.v1-converter-output { flex:0 0 auto; min-width:52px; color:var(--text); font-size:14.5px; font-weight:800; text-align:left; }
+.v1-converter-status { display:none; }
+
+.v1-entry-card { padding:9px; margin:0; border:1px solid var(--line); border-radius:13px; background:var(--surface); }
+.v1-entry-card label,.v1-payment-label { display:block; margin:0 0 4px 1px; color:var(--muted); font-size:10.5px; line-height:1.15; font-weight:750; }
+.v1-field { min-width:0; }
+.v1-row { display:grid; grid-template-columns:minmax(0,1.35fr) minmax(0,.95fr); gap:8px; align-items:end; }
+.v1-currency-payment-row { display:grid; grid-template-columns:minmax(0,.8fr) minmax(0,1.2fr); gap:8px; align-items:end; margin-top:7px; }
+.v1-entry-card input:not([type="file"]):not([type="hidden"]),.v1-entry-card select {
+  width:100%; min-width:0; height:38px; min-height:38px; border:1px solid var(--line);
+  border-radius:9px; padding:5px 8px; background:var(--field); color:var(--text);
+  line-height:1.15;
+}
+.v1-entry-card #merchant,.v1-entry-card #category { font-size:13px; font-weight:500; }
+.v1-entry-card #expenseCurrency { font-size:14px; font-weight:800; }
+.v1-payment-block { min-width:0; }
+.v1-payment-toggle { display:grid; grid-template-columns:1fr 1fr; gap:6px; }
+.v1-pay-btn {
+  height:38px; min-height:38px; border:1px solid var(--line); border-radius:9px;
+  background:var(--field); color:var(--text); padding:0 6px; font-size:12px; font-weight:800;
+  display:flex; align-items:center; justify-content:center; gap:5px;
+}
+.v1-pay-btn::before {
+  content:""; flex:0 0 15px; width:15px; height:15px; background:currentColor;
+  -webkit-mask-position:center; -webkit-mask-repeat:no-repeat; -webkit-mask-size:contain;
+  mask-position:center; mask-repeat:no-repeat; mask-size:contain;
+}
+#payCard { border-color:var(--line); background:var(--field); color:var(--text); }
+#payCard::before {
+  -webkit-mask-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect x='3' y='6' width='18' height='12' rx='2' fill='none' stroke='black' stroke-width='2'/%3E%3Cpath d='M3 10h18' fill='none' stroke='black' stroke-width='2'/%3E%3C/svg%3E");
+  mask-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect x='3' y='6' width='18' height='12' rx='2' fill='none' stroke='black' stroke-width='2'/%3E%3Cpath d='M3 10h18' fill='none' stroke='black' stroke-width='2'/%3E%3C/svg%3E");
+}
+#payCash { border-color:var(--line); background:var(--field); color:var(--text); }
+#payCash::before {
+  -webkit-mask-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect x='3' y='6' width='18' height='12' rx='2' fill='none' stroke='black' stroke-width='2'/%3E%3Ccircle cx='12' cy='12' r='2.5' fill='none' stroke='black' stroke-width='2'/%3E%3C/svg%3E");
+  mask-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect x='3' y='6' width='18' height='12' rx='2' fill='none' stroke='black' stroke-width='2'/%3E%3Ccircle cx='12' cy='12' r='2.5' fill='none' stroke='black' stroke-width='2'/%3E%3C/svg%3E");
+}
+#payCard.active { border-color:#59636f; background:#252a31; color:#d9dee5; }
+#payCash.active { border-color:#536056; background:#252b26; color:#dbe2dc; }
+.v1-amount-full { margin-top:7px; }
+.v1-amount-full #expenseAmount { height:40px; min-height:40px; padding:4px 42px 4px 8px; font-size:17px; font-weight:800; }
+.v1-clear-wrap { position:relative; }
+.v1-clear-field { display:none; position:absolute; right:5px; top:50%; transform:translateY(-50%); width:27px; height:27px; min-height:27px; border:0; border-radius:999px; background:var(--line); color:var(--muted); padding:0; font-size:15px; font-weight:700; line-height:1; }
+.v1-clear-field.show { display:block; }
+.v1-usd-preview { margin:3px 1px 0; color:var(--ok); font-size:10.5px; line-height:1.25; font-weight:700; }
+.v1-usd-preview:empty { display:none; }
+.v1-date-bar { display:flex; align-items:center; justify-content:space-between; gap:7px; margin-top:5px; padding:5px 8px; border:1px solid var(--line); border-radius:9px; background:var(--surface-2); }
+.v1-date-main { font-size:12.5px; font-weight:800; }
+.v1-date-change-wrap { position:relative; display:inline-flex; min-width:58px; min-height:30px; }
+.v1-change-date { display:flex; align-items:center; justify-content:center; width:100%; min-height:30px; border-radius:8px; background:var(--line); font-size:11px; font-weight:800; }
+.v1-date-picker-overlay { position:absolute !important; inset:0; width:100% !important; height:100% !important; min-height:0 !important; opacity:0; cursor:pointer; border:0 !important; padding:0 !important; }
+.v1-note-toggle { border:0; background:none; color:var(--muted); font-size:11.5px; padding:6px 1px 2px; }
+.v1-note-box { margin-top:3px; }
+.v1-note-box textarea { width:100%; min-height:58px; max-height:100px; height:auto; resize:vertical; border:1px solid var(--line); border-radius:9px; padding:7px 8px; background:var(--field); color:var(--text); font-size:16px; line-height:1.35; }
+.v1-save-action-row { display:grid; grid-template-columns:minmax(0,1fr) 38px; gap:7px; align-items:stretch; margin-top:7px; }
+/* Exact frozen-v1 Log Spend palette, without legacy shadow styling. */
+.v1-primary-button {
+  width:100%; height:38px; min-height:38px; border:1px solid #557864; border-radius:9px;
+  background:#3f624e; color:#f7faf8; font-size:14px; font-weight:850;
+}
+.v1-primary-button:active { background:#365543; border-color:#4c6f5a; }
+.v1-primary-button:disabled { opacity:.55; }
+.v1-receipt-button { width:38px; height:38px; min-height:38px; border:1px solid var(--line); border-radius:9px; background:var(--line); color:var(--text); display:grid; place-items:center; padding:8px; }
+.v1-receipt-button svg { width:100%; height:100%; fill:none; stroke:currentColor; stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round; }
+.v1-expense-status { min-height:0; margin-top:4px; color:var(--ok); font-size:10.5px; }
+.v1-expense-status:empty { display:none; }
+
+.v1-recent-card { margin-top:11px; padding:9px 10px 6px; border:1px solid var(--line); border-radius:13px; background:var(--surface); }
+.v1-recent-title { margin:0 0 4px; font-size:11px; line-height:1.1; font-weight:800; }
+.v1-recent-list { margin-top:0; padding:0; border-top:0; }
+.v1-recent-list .list-empty { padding:8px 0; color:var(--muted); font-size:10px; }
+.v1-recent-list .txnCompact {
+  display:grid;
+  grid-template-columns:minmax(0,1fr) auto auto;
+  gap:7px;
+  align-items:center;
+  min-height:38px;
+  padding:5px 0;
+  border-top:1px solid var(--line);
+  font-size:11px;
+}
+.v1-recent-list .txnCompact:first-child { border-top:0; }
+.v1-recent-list .txnCompactMain { min-width:0; line-height:1.22; }
+.v1-recent-list .txnCompactTitle { font-weight:800; white-space:normal; overflow-wrap:anywhere; }
+.v1-recent-list .txnCompactMeta { margin-top:2px; color:var(--muted); font-size:10px; white-space:normal; overflow-wrap:anywhere; }
+.v1-recent-list .txnCompactAmt { white-space:nowrap; text-align:right; font-weight:800; }
+.v1-recent-list .txnCompactUsd { color:var(--muted); font-weight:600; }
+.v1-recent-list .deleteCompact {
+  width:27px;
+  height:27px;
+  min-width:27px;
+  min-height:27px;
+  border:1px solid var(--line);
+  border-radius:7px;
+  padding:0;
+  background:transparent;
+  color:var(--muted);
+  font-size:17px;
+  line-height:1;
+  font-weight:400;
+}
+.v1-recent-list .deleteCompact:active { border-color:var(--danger); color:var(--danger); }
+
+/* Viewport and overscroll are owned by the shared app shell in styles.css. */

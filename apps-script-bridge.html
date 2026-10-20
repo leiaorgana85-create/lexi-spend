@@ -1,0 +1,65 @@
+<!doctype html>
+<html>
+<head>
+  <base target="_top">
+</head>
+<body>
+<script>
+(() => {
+  'use strict';
+  const PARENT_ORIGIN = 'https://leiaorgana85-create.github.io';
+
+  function post(type, id, ok, result, error) {
+    window.top.postMessage({ type, id, ok, result, error }, PARENT_ORIGIN);
+  }
+
+  window.addEventListener('message', event => {
+    if (event.origin !== PARENT_ORIGIN || event.source !== window.top) return;
+    const data = event.data || {};
+    const id = String(data.id || '');
+    if (!id) return;
+
+    if (data.type === 'lexi-spend-v2-call') {
+      const apiCode = String(data.apiCode || '');
+      const functionName = String(data.functionName || '');
+      const parameters = Array.isArray(data.parameters) ? data.parameters : [];
+      google.script.run
+        .withSuccessHandler(result => post('lexi-spend-result', id, true, result, ''))
+        .withFailureHandler(error => post('lexi-spend-result', id, false, null, error && error.message ? error.message : String(error)))
+        .bridgeExecuteV2(apiCode, functionName, parameters);
+      return;
+    }
+
+    if (data.type === 'lexi-spend-call') {
+      const apiCode = String(data.apiCode || '');
+      const functionName = String(data.functionName || '');
+      const parameters = Array.isArray(data.parameters) ? data.parameters : [];
+      const runner = google.script.run
+        .withSuccessHandler(result => post('lexi-spend-result', id, true, result, ''))
+        .withFailureHandler(error => post('lexi-spend-result', id, false, null, error && error.message ? error.message : String(error)));
+
+      if (apiCode.startsWith('lxs1.')) {
+        runner.authBridgeExecuteSession(apiCode, functionName, parameters);
+      } else {
+        runner.bridgeExecute(apiCode, functionName, parameters);
+      }
+      return;
+    }
+
+    if (data.type === 'lexi-spend-auth-google') {
+      google.script.run
+        .withSuccessHandler(result => post('lexi-spend-auth-result', id, true, result, ''))
+        .withFailureHandler(error => post('lexi-spend-auth-result', id, false, null, error && error.message ? error.message : String(error)))
+        .authGoogleBootstrap(
+          String(data.credential || ''),
+          String(data.currentCredential || ''),
+          Boolean(data.allowRelink)
+        );
+    }
+  });
+
+  window.top.postMessage({ type: 'lexi-spend-bridge-ready' }, PARENT_ORIGIN);
+})();
+</script>
+</body>
+</html>
