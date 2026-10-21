@@ -300,20 +300,31 @@ function v2LogExpense_(data) {
 
 function v2DeleteExpense_(entryId, today, stayContext) {
   const id = v2EntryId_(entryId);
-  const sheet = getSheet_();
-  const found = v2FindTransactionById_(sheet, id);
-  if (!found) {
-    return {
-      ok: true,
-      alreadyDeleted: true,
-      recent: getRecentTransactions_(4),
-      summary: getSpendingSummary_(normalizeIsoDate_(today) || todayIso_())
-    };
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+
+  let receiptFileId = '';
+  let result;
+
+  try {
+    const sheet = getSheet_();
+    const found = v2FindTransactionById_(sheet, id);
+    if (!found) {
+      return {
+        ok: true,
+        alreadyDeleted: true,
+        recent: getRecentTransactions_(4),
+        summary: getSpendingSummary_(normalizeIsoDate_(today) || todayIso_())
+      };
+    }
+
+    receiptFileId = String(found.row[14] || '').trim();
+    result = deleteExpense(id, today, stayContext);
+    result.recent = v2ExtendRecentTransactions_(result.recent, 4);
+  } finally {
+    lock.releaseLock();
   }
 
-  const receiptFileId = String(found.row[14] || '').trim();
-  const result = deleteExpense(id, today, stayContext);
-  result.recent = v2ExtendRecentTransactions_(result.recent, 4);
   if (receiptFileId) {
     try {
       DriveApp.getFileById(receiptFileId).setTrashed(true);
@@ -440,11 +451,17 @@ function v2AddCashWithdrawal_(data) {
 
 function v2DeleteCashWithdrawal_(entryId) {
   const id = v2EntryId_(entryId);
-  const sheet = getCashSheet_();
-  if (!v2FindCashById_(sheet, id)) {
-    return { ok:true, alreadyDeleted:true };
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    const sheet = getCashSheet_();
+    if (!v2FindCashById_(sheet, id)) {
+      return { ok:true, alreadyDeleted:true };
+    }
+    return deleteCashWithdrawal(id);
+  } finally {
+    lock.releaseLock();
   }
-  return deleteCashWithdrawal(id);
 }
 
 function v2GetCalendarMonth_(monthValue) {

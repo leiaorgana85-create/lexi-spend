@@ -3000,6 +3000,7 @@ function getStayWeek_(
     today < stayStart
       ? stayStart
       : (
+          stayEnd &&
           today > stayEnd
             ? stayEnd
             : today
