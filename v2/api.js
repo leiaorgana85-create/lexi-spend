@@ -9,6 +9,8 @@
   const AUTH_DB_KEY = 'apiCode';
   const REQUEST_TIMEOUT_MS = 120000;
   const READY_TIMEOUT_MS = 20000;
+  const CALENDAR_CACHE_PREFIX = 'lexiSpendV2Calendar:';
+  const CALENDAR_READ_TTL_MS = 60 * 1000;
   let frame = null;
   let target = null;
   let targetOrigin = '';
@@ -16,6 +18,7 @@
   let readyResolve = null;
   let nextId = 1;
   const pending = new Map();
+  const calendarRefreshes = new Map();
 
   function allowedOrigin(origin) {
     try {
@@ -205,7 +208,42 @@
     if (data.type === 'lexi-spend-result') settle(data);
   });
 
-  async function call(functionName, parameters = [], options = {}) {
+  function calendarCacheKey(month) {
+    return `${CALENDAR_CACHE_PREFIX}${month}`;
+  }
+
+  function readCalendarCache(month) {
+    try {
+      const cached = JSON.parse(localStorage.getItem(calendarCacheKey(month)) || 'null');
+      if (!cached?.data) return null;
+      return {
+        savedAt: Number(cached.savedAt || 0),
+        data: cached.data
+      };
+    } catch (_) {
+      return null;
+    }
+  }
+
+  function writeCalendarCache(month, data) {
+    try {
+      localStorage.setItem(calendarCacheKey(month), JSON.stringify({
+        savedAt: Date.now(),
+        data
+      }));
+    } catch (_) {}
+  }
+
+  function validCalendarMonth(value) {
+    return /^\d{4}-(0[1-9]|1[0-2])$/.test(String(value || '').trim());
+  }
+
+  function currentMonthKey() {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  }
+
+  async function callBackend(functionName, parameters = [], options = {}) {
     const code = await readCode();
     if (!code) throw new Error('NOT_CONNECTED');
 
@@ -239,15 +277,69 @@
     });
   }
 
+  function refreshCalendarMonth(month, options = {}) {
+    const normalized = String(month || '').trim();
+    if (!validCalendarMonth(normalized)) {
+      return Promise.reject(new Error('Invalid calendar month.'));
+    }
+    if (calendarRefreshes.has(normalized)) return calendarRefreshes.get(normalized);
+
+    const request = callBackend('getCalendarMonth', [normalized], options)
+      .then(data => {
+        writeCalendarCache(normalized, data);
+        return data;
+      })
+      .finally(() => {
+        if (calendarRefreshes.get(normalized) === request) calendarRefreshes.delete(normalized);
+      });
+
+    calendarRefreshes.set(normalized, request);
+    return request;
+  }
+
+  async function call(functionName, parameters = [], options = {}) {
+    const name = String(functionName || '').trim();
+    if (name !== 'getCalendarMonth') {
+      return callBackend(name, parameters, options);
+    }
+
+    const month = String(Array.isArray(parameters) ? parameters[0] || '' : '').trim();
+    if (!validCalendarMonth(month)) return callBackend(name, parameters, options);
+
+    const cached = readCalendarCache(month);
+    if (cached?.data) {
+      const fresh = cached.savedAt > 0 && Date.now() - cached.savedAt < CALENDAR_READ_TTL_MS;
+      if (!fresh) {
+        void refreshCalendarMonth(month, options).catch(() => {});
+      }
+      return cached.data;
+    }
+
+    return refreshCalendarMonth(month, options);
+  }
+
   async function connect(code, today) {
     await saveCode(code);
     resetBridge();
     try {
-      return await call('getAppState', [today, '']);
+      return await callBackend('getAppState', [today, '']);
     } catch (error) {
       await clearCode();
       throw error;
     }
+  }
+
+  async function hasCode() {
+    const code = await readCode();
+    if (!code) return false;
+
+    const month = currentMonthKey();
+    const cached = readCalendarCache(month);
+    const fresh = cached?.data && cached.savedAt > 0 && Date.now() - cached.savedAt < CALENDAR_READ_TTL_MS;
+    if (!fresh) {
+      void refreshCalendarMonth(month).catch(() => {});
+    }
+    return true;
   }
 
   ensureFrame();
@@ -256,7 +348,7 @@
     call,
     connect,
     clearCode,
-    hasCode: async () => Boolean(await readCode()),
+    hasCode,
     resetBridge
   });
 })();
