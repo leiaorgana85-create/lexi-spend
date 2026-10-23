@@ -21,6 +21,8 @@
     if ($('paymentMethod')) $('paymentMethod').value = method;
     $('payCard')?.classList.toggle('active', method === 'Card');
     $('payCash')?.classList.toggle('active', method === 'Cash');
+    $('payCard')?.setAttribute('aria-pressed', String(method === 'Card'));
+    $('payCash')?.setAttribute('aria-pressed', String(method === 'Cash'));
   }
 
   function updateDateDisplay() {

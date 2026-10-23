@@ -3,6 +3,7 @@
 
   const CURRENCIES = ['THB','KRW','VND','JPY','MXN','USD'];
   const VIEW_KEY = 'lexiSpendV2ActiveView';
+  const EXPENSE_CURRENCY_KEY = 'lexiSpendV2ExpenseCurrency';
   const CASH_CURRENCY_KEY = 'lexiSpendV2CashCurrency';
   const CALENDAR_CACHE_PREFIX = 'lexiSpendV2Calendar:';
   const APP_STATE_CACHE_KEY = 'lexiSpendV2AppState';
@@ -123,7 +124,7 @@
 
   function configureControls() {
     const defaultCurrency = state.app?.currency || 'THB';
-    fillSelect($('expenseCurrency'), CURRENCIES, $('expenseCurrency').value || defaultCurrency);
+    fillSelect($('expenseCurrency'), CURRENCIES, $('expenseCurrency').value || readExpenseCurrency() || defaultCurrency);
     fillSelect($('cashCurrency'), CURRENCIES, state.cashCurrency || defaultCurrency);
     const categorySelect = $('category');
     fillSelect(categorySelect, categories().map(item => item.name), categorySelect.value);
@@ -365,7 +366,7 @@
     renderCash();
     setLedgerButtons(state.busy);
     setText('settingsBackendVersion', state.app.appVersion || '—');
-    setText('settingsFrontendVersion', 'v2.0.5');
+    setText('settingsFrontendVersion', 'v2.0.6');
     if (persist) saveJson(APP_STATE_CACHE_KEY, { savedAt:Date.now(), app:state.app });
   }
 
@@ -383,6 +384,13 @@
     setText('settingsConnection', 'Syncing');
     setConnection('Syncing');
     return true;
+  }
+
+  function readExpenseCurrency() {
+    try {
+      const value = localStorage.getItem(EXPENSE_CURRENCY_KEY);
+      return CURRENCIES.includes(value) ? value : '';
+    } catch (_) { return ''; }
   }
 
   function readCashCurrency() {
@@ -1094,7 +1102,10 @@
     $('cashForm').addEventListener('submit', saveCash);
     $('converterAmount').addEventListener('input', scheduleConverter);
     ['expenseAmount','expenseCurrency','expenseDate'].forEach(id => $(id).addEventListener(id === 'expenseAmount' ? 'input' : 'change', scheduleExpensePreview));
-    $('expenseCurrency').addEventListener('change', scheduleConverter);
+    $('expenseCurrency').addEventListener('change', () => {
+      try { localStorage.setItem(EXPENSE_CURRENCY_KEY, $('expenseCurrency').value); } catch (_) {}
+      scheduleConverter();
+    });
     ['cashAmount','atmFee','cashDate'].forEach(id => {
       const el = $(id);
       if (el) el.addEventListener(['cashAmount','atmFee'].includes(id) ? 'input' : 'change', scheduleCashPreview);
