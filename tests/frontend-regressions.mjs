@@ -266,13 +266,47 @@ await check('real DOM startup, four tabs, settings, payment and date-label integ
   h.setNow('2030-01-16T12:00:00Z');a.refreshLocalDates();assert.match($('dateMain').textContent,/16/);
   assert.deepEqual(errors,[]);
 });
+await check('compact dark-mode dropdowns preserve category, independent currencies and submitted ledger payloads',async()=>{
+  const h=harness(),{a,w,$}=h;const errors=[];w.addEventListener('error',e=>errors.push(e.message));
+  a.bind();w.eval(source('v2/track.js'));await turn();
+  const button=id=>$(id).nextElementSibling;
+  const choose=(id,value)=>{
+    w.document.querySelector(`[data-view="${id==='cashCurrency'?'cash':'track'}"]`).click();
+    button(id).click();const option=[...w.document.querySelectorAll('.spend-select-option')].find(el=>el.textContent===value);assert(option,`${id}: ${value}`);option.click();
+    assert.equal($(id).value,value);assert.equal(button(id).textContent,value);assert.equal(w.document.querySelector('[role="listbox"]'),null);
+  };
+  assert.equal(w.document.querySelectorAll('.spend-select-button').length,3);
+  choose('category','Category B');choose('expenseCurrency','KRW');assert.equal($('converterSymbol').textContent,'₩');
+  assert.equal(w.localStorage.getItem('lexiSpendV2ExpenseCurrency'),'KRW');assert.equal(button('expenseCurrency').getAttribute('aria-required'),'true');
+  choose('cashCurrency','USD');assert.equal($('expenseCurrency').value,'KRW');assert.equal(a.state.cashCurrency,'USD');
+  assert.equal(button('cashCurrency').getAttribute('aria-label'),'Currency: USD');
+  button('cashCurrency').click();button('cashCurrency').dispatchEvent(new w.KeyboardEvent('keydown',{key:'Home',bubbles:true}));button('cashCurrency').dispatchEvent(new w.KeyboardEvent('keydown',{key:'Enter',bubbles:true}));assert.equal($('cashCurrency').value,'THB');
+  choose('cashCurrency','USD');choose('category','Category B');
+  button('category').click();button('category').dispatchEvent(new w.KeyboardEvent('keydown',{key:'Escape',bubbles:true}));assert.equal(w.document.querySelector('[role="listbox"]'),null);
+  button('category').click();$('merchant').dispatchEvent(new w.PointerEvent('pointerdown',{bubbles:true}));assert.equal(w.document.querySelector('[role="listbox"]'),null);
+  $('merchant').value='Example market';$('expenseAmount').value='10';$('expenseNote').value='Existing draft';
+  button('category').click();a.renderApp();await turn();assert.equal(w.document.querySelector('[role="listbox"]'),null);
+  assert.equal(button('category').textContent,'Category B');assert.equal(button('expenseCurrency').textContent,'KRW');assert.equal(button('cashCurrency').textContent,'USD');assert.equal($('expenseNote').value,'Existing draft');
+  assert.equal(new w.FormData($('expenseForm')).get('category'),'Category B');assert.equal(new w.FormData($('expenseForm')).get('currency'),'KRW');
+  a.saveCalendarCache('2030-01',emptyMonth());let expense,cash;
+  h.setHandler(async(name,args)=>{
+    if(name==='logExpense'){expense=args[0];return {entryId:expense.entryId,usdAmount:1,recent:[],summary:h.f.summary};}
+    if(name==='addCashWithdrawal'){cash=args[0];return {deduped:true};}
+    if(name==='getAppState')return clone(h.f);
+    return {};
+  });
+  await a.saveExpense({preventDefault(){}});await turn();assert.equal(expense.category,'Category B');assert.equal(expense.currency,'KRW');assert.equal(expense.note,'Existing draft');assert.equal(expense.paymentMethod,'Card');
+  choose('cashCurrency','USD');$('cashAmount').value='100';await a.saveCash({preventDefault(){}});await turn();assert.equal(cash.currency,'USD');assert.equal(cash.amount,100);
+  assert.equal($('expenseCurrency').value,'KRW');assert.equal(button('expenseCurrency').textContent,'KRW');assert.equal($('paymentMethod').value,'Card');assert.deepEqual(errors,[]);
+  assert.match(source('v2/track.css'),/background: var\(--surface\)/);assert.doesNotMatch(source('v2/track.css'),/var\(--blue/);
+});
 await check('service worker keeps sibling caches and uses only its current offline shell',async()=>{
   const handlers={},deleted=[],matches=[];const own={match:async key=>{matches.push(key);return {own:true};}};
-  const context={URL,fetch:async()=>{throw new Error('offline');},caches:{keys:async()=>['lexi-spend2-shell-v31','lexi-spend2-shell-v32','lexi-spend2-shell-v33','lexi-spend-v2-old','sibling-shell'],delete:async k=>deleted.push(k),open:async()=>own,match(){throw new Error('origin-wide lookup');}},
+  const context={URL,fetch:async()=>{throw new Error('offline');},caches:{keys:async()=>['lexi-spend2-shell-v31','lexi-spend2-shell-v32','lexi-spend2-shell-v33','lexi-spend2-shell-v34','lexi-spend-v2-old','sibling-shell'],delete:async k=>deleted.push(k),open:async()=>own,match(){throw new Error('origin-wide lookup');}},
     self:{location:{origin:'https://example.test'},addEventListener:(t,f)=>handlers[t]=f,skipWaiting(){},clients:{claim:async()=>{}}}};
   vm.runInNewContext(source('v2/sw.js'),context);let work;
   handlers.activate({waitUntil:p=>work=p});await work;
-  assert.deepEqual(deleted.sort(),['lexi-spend-v2-old','lexi-spend2-shell-v31','lexi-spend2-shell-v32']);
+  assert.deepEqual(deleted.sort(),['lexi-spend-v2-old','lexi-spend2-shell-v31','lexi-spend2-shell-v32','lexi-spend2-shell-v33']);
   const request={url:'https://example.test/lexi-spend/v2/app.js',method:'GET'};
   handlers.fetch({request,respondWith:p=>work=p});assert.equal((await work).own,true);assert.equal(matches.length,1);
   let handled=false;handlers.fetch({request:{url:'https://example.test/sibling/app.js',method:'GET'},respondWith(){handled=true;}});
