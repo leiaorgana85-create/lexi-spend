@@ -21,10 +21,11 @@ function fixture() {
       {name:'Category B',spent:0,limit:50}]} };
 }
 const windows=[];
-function harness({ realApi=false }={}) {
+function harness({ realApi=false, savedPending=null }={}) {
   const w = new Window({url:'https://example.test/lexi-spend/v2/',settings:{
     disableCSSFileLoading:true,disableJavaScriptFileLoading:true,disableIframePageLoading:true }});
   windows.push(w);
+  if(savedPending)w.localStorage.setItem('lexiSpendV2PendingSaves',savedPending);
   const html=fs.readFileSync(path.join(htmlRoot,'v2/index.html'),'utf8')
     .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi,'').replace(/<link\b[^>]*>/gi,'');
   w.document.write(html);w.confirm=()=>true;
@@ -37,7 +38,8 @@ function harness({ realApi=false }={}) {
   if(realApi)w.eval(source('v2/api.js'));
   const code=source('v2/app.js').replace('  init();',`  window.audit={state,init,bind,renderApp,configureControls,loadAppState,loadCalendarMonth,
     beginLedgerWrite,finishLedgerWrite,saveExpense,deleteExpense,saveCash,deleteCash,
-    applyCalendarExpenseSave,applyCalendarExpenseDelete,refreshLocalDates,localIsoDate,saveCalendarCache};`);
+    applyCalendarExpenseSave,applyCalendarExpenseDelete,refreshLocalDates,localIsoDate,saveCalendarCache,
+    updateConverter,updateExpensePreview,updateCashPreview,scheduleConverter,scheduleExpensePreview,scheduleCashPreview};`);
   assert.notEqual(code,source('v2/app.js'),'test entrypoint marker');w.eval(code);
   const a=w.audit,$=id=>w.document.getElementById(id);
   a.state.app=clone(f);a.state.cashCurrency='THB';a.state.calendarCursor=new w.Date(2030,0,1);
@@ -157,6 +159,82 @@ await check('transient expense retry keeps the same Entry ID and submitted data'
     assert.deepEqual(clone(args[0]),first);return {entryId:first.entryId,usdAmount:1,recent:[],summary:h.f.summary};
   });await h.a.saveExpense({preventDefault(){}});assert.equal(h.$('expenseStatus').textContent,'Saved');
 });
+await check('manual retries and reload reuse pending expense/Cash IDs; confirmed new saves get new IDs',async()=>{
+  for(const kind of ['expense','cash']){
+    const h=harness(),{a,$}=h,method=kind==='expense'?'saveExpense':'saveCash',ids=[];
+    const fill=x=>{x.$('merchant').value='Example';x.$('expenseAmount').value='10';x.$('cashAmount').value='100';};fill(h);
+    h.setHandler(async(name,args)=>{ids.push(args[0].entryId);throw new Error('network timeout');});
+    await a[method]({preventDefault(){}});await a[method]({preventDefault(){}});
+    assert.equal(ids.length,4);assert.equal(new Set(ids).size,1);
+    assert.equal($(kind==='expense'?'expenseAmount':'cashAmount').value,kind==='expense'?'10':'100');
+    // Edited attempts must not destroy the identity of the original unresolved save.
+    $(kind==='expense'?'expenseAmount':'cashAmount').value='200';await a[method]({preventDefault(){}});
+    assert.notEqual(ids[4],ids[0]);
+    const reloaded=harness({savedPending:h.w.localStorage.getItem('lexiSpendV2PendingSaves')});fill(reloaded);
+    reloaded.a.saveCalendarCache('2030-01',emptyMonth());let savedId;
+    reloaded.setHandler(async(name,args)=>{
+      if(name==='getAppState')return clone(reloaded.f);
+      savedId=args[0].entryId;
+      return kind==='expense'?{entryId:savedId,usdAmount:10,recent:[],summary:clone(h.f.summary),deduped:true}
+        :{deduped:true,withdrawal:{...args[0],usdEquivalent:3}};
+    });
+    await reloaded.a[method]({preventDefault(){}});await turn();assert.equal(savedId,ids[0]);
+    // The current refresh date is not part of expense identity.
+    assert.equal(Object.values(JSON.parse(reloaded.w.localStorage.getItem('lexiSpendV2PendingSaves'))[kind]).includes(ids[0]),false);
+    fill(reloaded);await reloaded.a[method]({preventDefault(){}});await turn();assert.notEqual(savedId,ids[0]);
+  }
+});
+await check('expense retry keeps identity across day change with its explicit row date',async()=>{
+  const h=harness(),ids=[];h.$('merchant').value='Example';h.$('expenseAmount').value='10';
+  h.setHandler(async(name,args)=>{ids.push(args[0].entryId);throw new Error('network timeout');});
+  await h.a.saveExpense({preventDefault(){}});h.setNow('2030-01-16T12:00:00Z');
+  await h.a.saveExpense({preventDefault(){}});assert.equal(new Set(ids).size,1);
+});
+await check('deduped withdrawal refreshes canonical balances without applying a second delta',async()=>{
+  const h=harness(),{a,$}=h;let read;
+  $('cashAmount').value='100';
+  h.setHandler(async(name,args)=>{
+    if(name==='getAppState')return new Promise(resolve=>read=resolve);
+    return {deduped:true,withdrawal:{...args[0],atmFee:5,atmFeeUsd:1}};
+  });
+  await a.saveCash({preventDefault(){}});
+  assert.equal(a.state.app.cashWallets.THB.balance,2000);assert.equal(a.state.app.cashWallets.THB.calendarMonthFeesUsd,0);
+  const canonical=clone(h.f);canonical.cashWallets.THB.balance=2100;
+  read(canonical);await turn();assert.equal(a.state.app.cashWallets.THB.balance,2100);
+});
+await check('all USD previews ignore out-of-order success/error, changed inputs, and cleared fields',async()=>{
+  for(const [method,input,output] of [['updateConverter','converterAmount','converterUsd'],['updateExpensePreview','expenseAmount','expenseUsdPreview'],['updateCashPreview','cashAmount','cashUsdPreview']]){
+    const h=harness(),pending=[];h.setHandler(()=>new Promise((resolve,reject)=>pending.push({resolve,reject})));
+    h.$(input).value='10';const first=h.a[method]();h.$(input).value='20';const second=h.a[method]();
+    pending[1].resolve({usdAmount:20,rate:1});await second;pending[0].resolve({usdAmount:10,rate:1});await first;
+    assert(h.$(output).textContent.includes('$20.00'));
+    h.$(input).value='30';const failure=h.a[method]();h.$(input).value='40';const current=h.a[method]();
+    pending[3].resolve({usdAmount:40,rate:1});await current;pending[2].reject(new Error('old failure'));await failure;
+    assert(h.$(output).textContent.includes('$40.00'));
+    h.$(input).value='50';const cleared=h.a[method]();h.$(input).value='';await h.a[method]();
+    pending[4].resolve({usdAmount:50,rate:1});await cleared;assert(!h.$(output).textContent.includes('$50.00'));
+    h.$(input).value='60';const changedCurrency=h.a[method]();
+    h.$(method==='updateCashPreview'?'cashCurrency':'expenseCurrency').value='USD';
+    const previous=h.$(output).textContent;pending[5].resolve({usdAmount:60,rate:1});await changedCurrency;
+    assert.equal(h.$(output).textContent,previous);
+  }
+});
+await check('Cash preview snapshots date/fee and stale responses cannot repaint during debounce',async()=>{
+  const h=harness(),pending=[];h.setHandler(()=>new Promise(resolve=>pending.push(resolve)));
+  h.$('cashAmount').value='100';h.$('atmFee').value='5';const first=h.a.updateCashPreview();
+  h.$('cashDate').value='2030-01-16';h.$('atmFee').value='10';
+  pending.shift()({usdAmount:100,rate:1});await first;assert.equal(h.$('cashUsdPreview').textContent,'');
+  h.$('expenseAmount').value='5';const second=h.a.updateExpensePreview();
+  h.a.scheduleExpensePreview();pending.shift()({usdAmount:5});await second;
+  assert.equal(h.$('expenseUsdPreview').textContent,'');
+});
+await check('blank expense amount is rejected locally while an explicit zero remains allowed',async()=>{
+  const h=harness(),{a,$}=h;$('merchant').value='Example';$('expenseAmount').value='';
+  await a.saveExpense({preventDefault(){}});assert.equal(h.calls.length,0);assert.match($('expenseStatus').textContent,/valid amount/);
+  a.saveCalendarCache('2030-01',emptyMonth());let sent;
+  h.setHandler(async(name,args)=>{sent=args[0];return {entryId:sent.entryId,usdAmount:0,recent:[],summary:h.f.summary};});
+  $('expenseAmount').value='0';await a.saveExpense({preventDefault(){}});assert.equal(sent.amount,0);
+});
 await check('real DOM startup, four tabs, settings, payment and date-label integration',async()=>{
   const h=harness(),{a,w,$}=h;const errors=[];w.addEventListener('error',e=>errors.push(e.message));
   w.eval(source('v2/track.js'));await a.init();await turn();
@@ -172,11 +250,11 @@ await check('real DOM startup, four tabs, settings, payment and date-label integ
 });
 await check('service worker keeps sibling caches and uses only its current offline shell',async()=>{
   const handlers={},deleted=[],matches=[];const own={match:async key=>{matches.push(key);return {own:true};}};
-  const context={URL,fetch:async()=>{throw new Error('offline');},caches:{keys:async()=>['lexi-spend2-shell-v30','lexi-spend2-shell-v31','lexi-spend-v2-old','sibling-shell'],delete:async k=>deleted.push(k),open:async()=>own,match(){throw new Error('origin-wide lookup');}},
+  const context={URL,fetch:async()=>{throw new Error('offline');},caches:{keys:async()=>['lexi-spend2-shell-v31','lexi-spend2-shell-v32','lexi-spend-v2-old','sibling-shell'],delete:async k=>deleted.push(k),open:async()=>own,match(){throw new Error('origin-wide lookup');}},
     self:{location:{origin:'https://example.test'},addEventListener:(t,f)=>handlers[t]=f,skipWaiting(){},clients:{claim:async()=>{}}}};
   vm.runInNewContext(source('v2/sw.js'),context);let work;
   handlers.activate({waitUntil:p=>work=p});await work;
-  assert.deepEqual(deleted.sort(),['lexi-spend-v2-old','lexi-spend2-shell-v30']);
+  assert.deepEqual(deleted.sort(),['lexi-spend-v2-old','lexi-spend2-shell-v31']);
   const request={url:'https://example.test/lexi-spend/v2/app.js',method:'GET'};
   handlers.fetch({request,respondWith:p=>work=p});assert.equal((await work).own,true);assert.equal(matches.length,1);
   let handled=false;handlers.fetch({request:{url:'https://example.test/sibling/app.js',method:'GET'},respondWith(){handled=true;}});
