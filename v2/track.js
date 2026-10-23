@@ -84,7 +84,7 @@
       new MutationObserver(() => {
         if (/^Saved/.test(status.textContent || '')) {
           updateClearButtons();
-          setNoteOpen(false);
+          if (!$('expenseNote')?.value) setNoteOpen(false);
         }
       }).observe(status, { childList:true, characterData:true, subtree:true });
     }

@@ -5,7 +5,7 @@
 // removed once during this cutover so old preview shells do not linger.
 const CACHE_PREFIX = 'lexi-spend2-';
 const LEGACY_CACHE_PREFIX = 'lexi-spend-v2-';
-const CACHE_NAME = `${CACHE_PREFIX}shell-v30`;
+const CACHE_NAME = `${CACHE_PREFIX}shell-v31`;
 const SHELL = [
   './',
   './index.html',
@@ -57,10 +57,11 @@ self.addEventListener('fetch', event => {
       }
       return response;
     } catch (_) {
-      const cached = await caches.match(request);
+      const cache = await caches.open(CACHE_NAME);
+      const cached = await cache.match(request);
       if (cached) return cached;
       if (request.mode === 'navigate') {
-        const fallback = await caches.match('./index.html');
+        const fallback = await cache.match('./index.html');
         if (fallback) return fallback;
       }
       throw _;

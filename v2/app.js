@@ -18,6 +18,11 @@
     calendarVersions: new Map(),
     selectedDate: '',
     busy: false,
+    ledgerVersion: 0,
+    syncQueued: false,
+    autoDates: {},
+    manualDates: {},
+    localDay: localIsoDate(),
     syncing: false,
     hiddenAt: 0
   };
@@ -109,24 +114,66 @@
       const option = document.createElement('option');
       option.value = value;
       option.textContent = value;
-      if (value === selected) option.selected = true;
       select.appendChild(option);
     });
+    select.value = values.includes(selected) ? selected : (values[0] || '');
   }
 
   function configureControls() {
     const defaultCurrency = state.app?.currency || 'THB';
-    fillSelect($('expenseCurrency'), CURRENCIES, defaultCurrency);
+    fillSelect($('expenseCurrency'), CURRENCIES, $('expenseCurrency').value || defaultCurrency);
     fillSelect($('cashCurrency'), CURRENCIES, state.cashCurrency || defaultCurrency);
-
     const categorySelect = $('category');
-    categorySelect.replaceChildren();
-    categories().forEach(item => {
-      const option = document.createElement('option');
-      option.value = item.name;
-      option.textContent = item.name;
-      categorySelect.appendChild(option);
+    fillSelect(categorySelect, categories().map(item => item.name), categorySelect.value);
+  }
+
+  function hasFormDraft(kind) {
+    const ids = kind === 'expense'
+      ? ['merchant', 'expenseAmount', 'expenseNote']
+      : ['cashAmount', 'atmFee', 'bankDebitUsd', 'cashNote'];
+    return ids.some(id => String($(id)?.value || '').trim());
+  }
+
+  function refreshLocalDates() {
+    const today = localIsoDate();
+    const changed = today !== state.localDay;
+    state.localDay = today;
+    ['expense', 'cash'].forEach(kind => {
+      const input = $(`${kind}Date`);
+      if (!input || state.manualDates[kind] || hasFormDraft(kind)) return;
+      if (input.value && input.value !== state.autoDates[kind]) return;
+      if (input.value === today) return;
+      state.autoDates[kind] = today;
+      input.value = today;
+      input.dispatchEvent(new Event('change', { bubbles:true }));
     });
+    return changed;
+  }
+
+  function clearSubmittedFields(values) {
+    Object.entries(values).forEach(([id, value]) => {
+      if ($(id).value === value) $(id).value = '';
+    });
+  }
+
+  function beginLedgerWrite() {
+    state.busy = true;
+    state.ledgerVersion++;
+    setLedgerButtons(true);
+  }
+
+  function setLedgerButtons(disabled) {
+    ['saveExpenseButton', 'saveCashButton'].forEach(id => { $(id).disabled = disabled; });
+    document.querySelectorAll('#recentTransactions .deleteCompact, #recentWithdrawals .deleteCompact')
+      .forEach(button => { button.disabled = disabled; });
+  }
+
+  function finishLedgerWrite() {
+    state.ledgerVersion++;
+    state.busy = false;
+    setLedgerButtons(false);
+    refreshLocalDates();
+    if (state.syncQueued && !state.syncing) void loadAppState(false);
   }
 
   function renderRecent() {
@@ -314,8 +361,9 @@
     renderRecent();
     renderBudget();
     renderCash();
+    setLedgerButtons(state.busy);
     setText('settingsBackendVersion', state.app.appVersion || '—');
-    setText('settingsFrontendVersion', 'v2.0.3-preview');
+    setText('settingsFrontendVersion', 'v2.0.4');
     if (persist) saveJson(APP_STATE_CACHE_KEY, { savedAt:Date.now(), app:state.app });
   }
 
@@ -344,7 +392,9 @@
   }
 
   async function loadAppState(showError = true) {
+    if (state.busy) { state.syncQueued = true; return false; }
     if (state.syncing) return false;
+    state.syncQueued = false;
     state.syncing = true;
     setConnection(state.app ? 'Syncing' : 'Connecting');
     setText('settingsConnection', state.app ? 'Syncing' : 'Connecting');
@@ -353,17 +403,24 @@
     try {
       for (let attempt = 0; attempt < 2; attempt++) {
         try {
+          const requestVersion = state.ledgerVersion;
+          const requestDay = localIsoDate();
           const result = await SpendApi.call(
             'getAppState',
-            [localIsoDate(), state.cashCurrency || ''],
+            [requestDay, state.cashCurrency || ''],
             { timeoutMs:20000 }
           );
+          if (requestVersion !== state.ledgerVersion || state.busy || requestDay !== localIsoDate()) {
+            state.syncQueued = true;
+            return false;
+          }
           state.app = result;
           if (!state.cashCurrency) state.cashCurrency = readCashCurrency() || result.currency || 'THB';
           renderApp({ persist:true });
           setConnected();
           return true;
         } catch (error) {
+          if (state.busy) { state.syncQueued = true; return false; }
           if (String(error?.message) === 'NOT_CONNECTED') {
             setConnection('Not connected', 'error');
             setText('settingsConnection', 'Not connected');
@@ -384,6 +441,7 @@
       return false;
     } finally {
       state.syncing = false;
+      if (state.syncQueued && !state.busy) void loadAppState(false);
     }
   }
 
@@ -514,57 +572,56 @@
     const amount = Number($('expenseAmount').value);
     if (!Number.isFinite(amount) || amount < 0) { setStatus('expenseStatus', 'Enter a valid amount.', true); return; }
     if (!$('merchant').value.trim()) { setStatus('expenseStatus', 'Merchant is required.', true); return; }
-    state.busy = true;
-    $('saveExpenseButton').disabled = true;
+    beginLedgerWrite();
     setStatus('expenseStatus', 'Saving…');
     const entryId = uuid();
+    const submitted = { merchant:$('merchant').value, expenseAmount:$('expenseAmount').value, expenseNote:$('expenseNote').value };
+    const payload = {
+      entryId,
+      date:$('expenseDate').value,
+      merchant:$('merchant').value.trim(),
+      category:$('category').value,
+      paymentMethod:$('paymentMethod').value,
+      amount,
+      currency:$('expenseCurrency').value,
+      country:state.app?.country || '',
+      note:$('expenseNote').value.trim(),
+      today:localIsoDate()
+    };
     try {
-      setStatus('expenseStatus', 'Saving…');
-      const result = await retryWrite('logExpense', [{
-        entryId,
-        date:$('expenseDate').value,
-        merchant:$('merchant').value.trim(),
-        category:$('category').value,
-        paymentMethod:$('paymentMethod').value,
-        amount,
-        currency:$('expenseCurrency').value,
-        country:state.app?.country || '',
-        note:$('expenseNote').value.trim(),
-        today:localIsoDate()
-      }]);
+      const result = await retryWrite('logExpense', [payload]);
 
       const calendarExpense = {
         entryId:result.entryId || entryId,
-        date:$('expenseDate').value,
-        merchant:$('merchant').value.trim(),
-        category:$('category').value,
-        paymentMethod:$('paymentMethod').value,
+        date:payload.date,
+        merchant:payload.merchant,
+        category:payload.category,
+        paymentMethod:payload.paymentMethod,
         localAmount:amount,
-        currency:$('expenseCurrency').value,
+        currency:payload.currency,
         usdAmount:Number(result.usdAmount || 0),
-        country:state.app?.country || '',
-        note:$('expenseNote').value.trim(),
+        country:payload.country,
+        note:payload.note,
         receiptUrl:''
       };
       state.app = { ...state.app, recent:result.recent, summary:result.summary };
       if (result.cash && state.app?.cashWallets) state.app.cashWallets[result.cash.currency] = result.cash;
       renderApp({ persist:true });
       if (!applyCalendarExpenseSave(calendarExpense)) refreshCalendarMonthInBackgroundForDate(calendarExpense.date);
-      $('merchant').value = '';
-      $('expenseAmount').value = '';
-      $('expenseNote').value = '';
+      clearSubmittedFields(submitted);
       setText('expenseUsdPreview', '');
       setStatus('expenseStatus', result.deduped ? 'Saved · confirmed retry' : 'Saved');
     } catch (error) {
       setStatus('expenseStatus', error?.message || 'Could not save expense.', true);
     } finally {
-      state.busy = false;
-      $('saveExpenseButton').disabled = false;
+      finishLedgerWrite();
     }
   }
 
   async function deleteExpense(tx) {
+    if (state.busy) return;
     if (!confirm(`Delete ${tx.merchant || 'this expense'} ${tx.usdAmount || ''}?`)) return;
+    beginLedgerWrite();
     setStatus('expenseStatus', 'Deleting…');
     try {
       const result = await retryWrite('deleteExpense', [tx.entryId, localIsoDate(), {
@@ -573,13 +630,14 @@
       state.app = { ...state.app, recent:result.recent, summary:result.summary };
       const deletedCash = String(result.deleted?.paymentMethod || tx.paymentMethod || '') === 'Cash';
       if (deletedCash && (result.alreadyDeleted || !applyCashSpendDeletion(result.deleted))) {
-        await loadAppState(false);
+        state.syncQueued = true;
       } else {
         renderApp({ persist:true });
       }
       if (!applyCalendarExpenseDelete(tx)) refreshCalendarMonthInBackgroundForDate(tx.date);
       setStatus('expenseStatus', 'Deleted');
     } catch (error) { setStatus('expenseStatus', error?.message || 'Could not delete.', true); }
+    finally { finishLedgerWrite(); }
   }
 
   function applyCashSpendDeletion(expense) {
@@ -644,10 +702,10 @@
     if (state.busy) return;
     const amount = Number($('cashAmount').value);
     if (!Number.isFinite(amount) || amount <= 0) { setStatus('cashStatus', 'Enter an amount greater than zero.', true); return; }
-    state.busy = true;
-    $('saveCashButton').disabled = true;
+    beginLedgerWrite();
     setStatus('cashStatus', 'Saving…');
     const entryId = uuid();
+    const submitted = Object.fromEntries(['cashAmount','atmFee','bankDebitUsd','cashNote'].map(id => [id, $(id).value]));
     try {
       const result = await retryWrite('addCashWithdrawal', [{
         entryId,
@@ -660,24 +718,25 @@
         note:$('cashNote').value.trim()
       }]);
       applyCashWithdrawalDelta(result.withdrawal, 1);
-      $('cashAmount').value = '';
-      $('atmFee').value = '';
-      $('bankDebitUsd').value = '';
-      $('cashNote').value = '';
+      clearSubmittedFields(submitted);
       setText('cashUsdPreview', '');
       setStatus('cashStatus', result.deduped ? 'Saved · confirmed retry' : 'Saved');
     } catch (error) { setStatus('cashStatus', error?.message || 'Could not save withdrawal.', true); }
-    finally { state.busy = false; $('saveCashButton').disabled = false; }
+    finally { finishLedgerWrite(); }
   }
 
   async function deleteCash(withdrawal) {
+    if (state.busy) return;
     if (!confirm(`Delete ${localMoney(withdrawal.amount, withdrawal.currency)} withdrawal?`)) return;
+    beginLedgerWrite();
     setStatus('cashStatus', 'Deleting…');
     try {
       const result = await retryWrite('deleteCashWithdrawal', [withdrawal.entryId]);
-      applyCashWithdrawalDelta(result.deleted || withdrawal, -1);
+      if (result.alreadyDeleted) state.syncQueued = true;
+      else applyCashWithdrawalDelta(result.deleted || withdrawal, -1);
       setStatus('cashStatus', 'Deleted');
     } catch (error) { setStatus('cashStatus', error?.message || 'Could not delete.', true); }
+    finally { finishLedgerWrite(); }
   }
 
   function calendarCacheKey(month) { return `${CALENDAR_CACHE_PREFIX}${month}`; }
@@ -687,9 +746,10 @@
     state.calendar.set(month, cached.data);
     return cached.data;
   }
-  function saveCalendarCache(month, data) {
+  function saveCalendarCache(month, data, confirmedRead = true) {
     state.calendar.set(month, data);
-    saveJson(calendarCacheKey(month), { savedAt:Date.now(), data });
+    const savedAt = confirmedRead ? Date.now() : Number(readJson(calendarCacheKey(month))?.savedAt || 0);
+    saveJson(calendarCacheKey(month), { savedAt, data });
   }
   function calendarCachedMonth(month) {
     return state.calendar.get(month) || restoreCalendarCache(month);
@@ -739,7 +799,7 @@
   }
   function commitCalendarMutation(month, data) {
     recomputeCalendarMonth(data);
-    saveCalendarCache(month, data);
+    saveCalendarCache(month, data, false);
     if (state.activeView === 'calendar' && month === monthKey(state.calendarCursor)) renderCalendar(data);
   }
   function applyCalendarExpenseSave(expense) {
@@ -980,6 +1040,12 @@
       openConnectDialog();
     });
     $('connectForm').addEventListener('submit', connect);
+    ['expense', 'cash'].forEach(kind => {
+      $(`${kind}Date`).addEventListener('change', () => {
+        state.manualDates[kind] = $(`${kind}Date`).value !== state.autoDates[kind];
+      });
+      $(`${kind}Form`).addEventListener('focusin', refreshLocalDates);
+    });
     $('expenseForm').addEventListener('submit', saveExpense);
     $('cashForm').addEventListener('submit', saveCash);
     $('converterAmount').addEventListener('input', scheduleConverter);
@@ -1012,12 +1078,18 @@
       }
       const awayMs = state.hiddenAt ? Date.now() - state.hiddenAt : 0;
       state.hiddenAt = 0;
-      if (awayMs < 30000 || state.syncing) return;
+      const dayChanged = refreshLocalDates();
+      if ((!dayChanged && awayMs < 30000) || state.syncing) return;
+      if (state.busy) { state.syncQueued = true; return; }
       if (!(await SpendApi.hasCode()) || state.syncing) return;
+      if (state.busy) { state.syncQueued = true; return; }
       SpendApi.resetBridge();
       const refreshed = await loadAppState(false);
       if (refreshed) void loadCalendarMonth(monthKey(state.calendarCursor), true);
     });
+    setInterval(() => {
+      if (document.visibilityState === 'visible' && refreshLocalDates()) void loadAppState(false);
+    }, 60000);
   }
 
   async function init() {
@@ -1025,6 +1097,7 @@
     const today = localIsoDate();
     $('expenseDate').value = today;
     $('cashDate').value = today;
+    state.autoDates = { expense:today, cash:today };
     state.activeView = readView();
     state.cashCurrency = readCashCurrency();
     restoreCachedAppState();
