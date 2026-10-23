@@ -51,8 +51,11 @@
   -webkit-mask-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect x='3' y='6' width='18' height='12' rx='2' fill='none' stroke='black' stroke-width='2'/%3E%3Ccircle cx='12' cy='12' r='2.5' fill='none' stroke='black' stroke-width='2'/%3E%3C/svg%3E");
   mask-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect x='3' y='6' width='18' height='12' rx='2' fill='none' stroke='black' stroke-width='2'/%3E%3Ccircle cx='12' cy='12' r='2.5' fill='none' stroke='black' stroke-width='2'/%3E%3C/svg%3E");
 }
-#payCard.active { border-color:#59636f; background:#252a31; color:#d9dee5; }
-#payCash.active { border-color:#536056; background:#252b26; color:#dbe2dc; }
+#payCard:not(.active), #payCash:not(.active) { color:var(--muted); }
+#payCard.active, #payCash.active {
+  border-color:#9daaba; background:#3b4652; color:#f7fafc;
+  box-shadow:inset 0 0 0 1px #9daaba;
+}
 .v1-amount-full { margin-top:7px; }
 .v1-amount-full #expenseAmount { height:40px; min-height:40px; padding:4px 42px 4px 8px; font-size:17px; font-weight:800; }
 .v1-clear-wrap { position:relative; }
