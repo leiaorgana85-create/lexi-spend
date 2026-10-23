@@ -6,6 +6,8 @@
   const CASH_CURRENCY_KEY = 'lexiSpendV2CashCurrency';
   const CALENDAR_CACHE_PREFIX = 'lexiSpendV2Calendar:';
   const APP_STATE_CACHE_KEY = 'lexiSpendV2AppState';
+  const PENDING_SAVES_KEY = 'lexiSpendV2PendingSaves';
+  const pendingSaves = readJson(PENDING_SAVES_KEY) || {};
   const $ = id => document.getElementById(id);
 
   const state = {
@@ -363,7 +365,7 @@
     renderCash();
     setLedgerButtons(state.busy);
     setText('settingsBackendVersion', state.app.appVersion || '—');
-    setText('settingsFrontendVersion', 'v2.0.4');
+    setText('settingsFrontendVersion', 'v2.0.5');
     if (persist) saveJson(APP_STATE_CACHE_KEY, { savedAt:Date.now(), app:state.app });
   }
 
@@ -460,50 +462,74 @@
   }
 
   let converterTimer = null;
+  let converterVersion = 0;
   function scheduleConverter() {
+    converterVersion++;
     clearTimeout(converterTimer);
     converterTimer = setTimeout(updateConverter, 280);
   }
   async function updateConverter() {
-    const amount = Number($('converterAmount').value || 0);
-    if (!Number.isFinite(amount) || amount < 0) return;
+    const version = ++converterVersion;
+    const input = $('converterAmount').value;
+    const currency = $('expenseCurrency').value;
+    const today = localIsoDate();
+    const isCurrent = () => version === converterVersion && input === $('converterAmount').value && currency === $('expenseCurrency').value && today === localIsoDate();
+    const amount = Number(input || 0);
+    if (!Number.isFinite(amount) || amount < 0) { setText('converterUsd', '$—'); setStatus('converterStatus', ''); return; }
     setStatus('converterStatus', amount ? '…' : '');
     if (!amount) { setText('converterUsd', '$0.00'); setStatus('converterStatus', ''); return; }
     try {
-      const r = await SpendApi.call('previewUsd', [amount, $('expenseCurrency').value, localIsoDate()]);
+      const r = await SpendApi.call('previewUsd', [amount, currency, today]);
+      if (!isCurrent()) return;
       setText('converterUsd', money(r.usdAmount));
       setStatus('converterStatus', r.effectiveDate || '');
-    } catch (error) { setStatus('converterStatus', 'Unavailable', true); }
+    } catch (error) { if (isCurrent()) setStatus('converterStatus', 'Unavailable', true); }
   }
 
   let previewTimer = null;
+  let expensePreviewVersion = 0;
   function scheduleExpensePreview() {
+    expensePreviewVersion++;
     clearTimeout(previewTimer);
     previewTimer = setTimeout(updateExpensePreview, 300);
   }
   async function updateExpensePreview() {
-    const amount = Number($('expenseAmount').value || 0);
-    if (!amount || amount < 0) { setText('expenseUsdPreview', ''); return; }
+    const version = ++expensePreviewVersion;
+    const input = $('expenseAmount').value;
+    const currency = $('expenseCurrency').value;
+    const date = $('expenseDate').value;
+    const isCurrent = () => version === expensePreviewVersion && input === $('expenseAmount').value && currency === $('expenseCurrency').value && date === $('expenseDate').value;
+    const amount = Number(input || 0);
+    if (!Number.isFinite(amount) || !amount || amount < 0) { setText('expenseUsdPreview', ''); return; }
     try {
-      const r = await SpendApi.call('previewUsd', [amount, $('expenseCurrency').value, $('expenseDate').value]);
-      setText('expenseUsdPreview', money(r.usdAmount));
-    } catch (_) { setText('expenseUsdPreview', '—'); }
+      const r = await SpendApi.call('previewUsd', [amount, currency, date]);
+      if (isCurrent()) setText('expenseUsdPreview', money(r.usdAmount));
+    } catch (_) { if (isCurrent()) setText('expenseUsdPreview', '—'); }
   }
 
   let cashPreviewTimer = null;
+  let cashPreviewVersion = 0;
   function scheduleCashPreview() {
+    cashPreviewVersion++;
     clearTimeout(cashPreviewTimer);
     cashPreviewTimer = setTimeout(updateCashPreview, 300);
   }
   async function updateCashPreview() {
-    const amount = Number($('cashAmount').value || 0);
-    const fee = Number($('atmFee').value || 0);
-    if (!amount || amount < 0 || fee < 0) { setText('cashUsdPreview', ''); return; }
+    const version = ++cashPreviewVersion;
+    const input = $('cashAmount').value;
+    const feeInput = $('atmFee').value;
+    const currency = $('cashCurrency').value;
+    const date = $('cashDate').value;
+    const isCurrent = () => version === cashPreviewVersion && input === $('cashAmount').value && feeInput === $('atmFee').value && currency === $('cashCurrency').value && date === $('cashDate').value;
+    const amount = Number(input || 0);
+    const fee = Number(feeInput || 0);
+    if (!Number.isFinite(amount) || !Number.isFinite(fee) || !amount || amount < 0 || fee < 0) { setText('cashUsdPreview', ''); return; }
     try {
-      const r = await SpendApi.call('previewUsd', [amount, $('cashCurrency').value, $('cashDate').value]);
+      const r = await SpendApi.call('previewUsd', [amount, currency, date]);
+      if (!isCurrent()) return;
       const feeUsd = Number(fee || 0) * Number(r.rate || 0);
       setText('cashUsdPreview', fee > 0 ? `≈ ${money(r.usdAmount)} · fee ${money(feeUsd)}` : `≈ ${money(r.usdAmount)}`);
-    } catch (_) { setText('cashUsdPreview', '—'); }
+    } catch (_) { if (isCurrent()) setText('cashUsdPreview', '—'); }
   }
 
   async function receiptDataUrl(file) {
@@ -566,18 +592,32 @@
     }
   }
 
+  function pendingSave(kind, payload) {
+    const { today, ...row } = payload;
+    const signature = JSON.stringify(row);
+    if (!pendingSaves[kind]) pendingSaves[kind] = {};
+    const entryId = pendingSaves[kind][signature] || uuid();
+    pendingSaves[kind][signature] = entryId;
+    saveJson(PENDING_SAVES_KEY, pendingSaves);
+    return { entryId, signature };
+  }
+
+  function confirmSave(kind, signature) {
+    delete pendingSaves[kind][signature];
+    saveJson(PENDING_SAVES_KEY, pendingSaves);
+  }
+
   async function saveExpense(event) {
     event.preventDefault();
     if (state.busy) return;
-    const amount = Number($('expenseAmount').value);
-    if (!Number.isFinite(amount) || amount < 0) { setStatus('expenseStatus', 'Enter a valid amount.', true); return; }
+    const rawAmount = $('expenseAmount').value.trim();
+    const amount = Number(rawAmount);
+    if (!rawAmount || !Number.isFinite(amount) || amount < 0) { setStatus('expenseStatus', 'Enter a valid amount.', true); return; }
     if (!$('merchant').value.trim()) { setStatus('expenseStatus', 'Merchant is required.', true); return; }
     beginLedgerWrite();
     setStatus('expenseStatus', 'Saving…');
-    const entryId = uuid();
     const submitted = { merchant:$('merchant').value, expenseAmount:$('expenseAmount').value, expenseNote:$('expenseNote').value };
     const payload = {
-      entryId,
       date:$('expenseDate').value,
       merchant:$('merchant').value.trim(),
       category:$('category').value,
@@ -588,8 +628,10 @@
       note:$('expenseNote').value.trim(),
       today:localIsoDate()
     };
+    const { entryId, signature } = pendingSave('expense', payload);
     try {
-      const result = await retryWrite('logExpense', [payload]);
+      const result = await retryWrite('logExpense', [{ ...payload, entryId }]);
+      confirmSave('expense', signature);
 
       const calendarExpense = {
         entryId:result.entryId || entryId,
@@ -704,20 +746,22 @@
     if (!Number.isFinite(amount) || amount <= 0) { setStatus('cashStatus', 'Enter an amount greater than zero.', true); return; }
     beginLedgerWrite();
     setStatus('cashStatus', 'Saving…');
-    const entryId = uuid();
     const submitted = Object.fromEntries(['cashAmount','atmFee','bankDebitUsd','cashNote'].map(id => [id, $(id).value]));
+    const payload = {
+      date:$('cashDate').value,
+      amount,
+      atmFee:Number($('atmFee').value || 0),
+      bankDebitUsd:$('bankDebitUsd').value.trim(),
+      currency:$('cashCurrency').value,
+      country:state.app?.country || '',
+      note:$('cashNote').value.trim()
+    };
+    const { entryId, signature } = pendingSave('cash', payload);
     try {
-      const result = await retryWrite('addCashWithdrawal', [{
-        entryId,
-        date:$('cashDate').value,
-        amount,
-        atmFee:Number($('atmFee').value || 0),
-        bankDebitUsd:$('bankDebitUsd').value.trim(),
-        currency:$('cashCurrency').value,
-        country:state.app?.country || '',
-        note:$('cashNote').value.trim()
-      }]);
-      applyCashWithdrawalDelta(result.withdrawal, 1);
+      const result = await retryWrite('addCashWithdrawal', [{ ...payload, entryId }]);
+      confirmSave('cash', signature);
+      if (result.deduped) state.syncQueued = true;
+      else applyCashWithdrawalDelta(result.withdrawal, 1);
       clearSubmittedFields(submitted);
       setText('cashUsdPreview', '');
       setStatus('cashStatus', result.deduped ? 'Saved · confirmed retry' : 'Saved');
