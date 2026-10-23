@@ -254,7 +254,8 @@
       if (active?.button === button) close(); else open(select, button);
     });
     button.addEventListener('keydown', event => keydown(event, select, button));
-    button.addEventListener('blur', () => close());
+    // A touch can blur the trigger before its option click is delivered.
+    // Outside pointer/click, Tab, Escape and visibility handlers own dismissal.
     sync(select);
   }
 

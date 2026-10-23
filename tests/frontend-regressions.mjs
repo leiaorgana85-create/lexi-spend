@@ -300,13 +300,27 @@ await check('compact dark-mode dropdowns preserve category, independent currenci
   assert.equal($('expenseCurrency').value,'KRW');assert.equal(button('expenseCurrency').textContent,'KRW');assert.equal($('paymentMethod').value,'Card');assert.deepEqual(errors,[]);
   assert.match(source('v2/track.css'),/background: var\(--surface\)/);assert.doesNotMatch(source('v2/track.css'),/var\(--blue/);
 });
+await check('option taps survive trigger blur before click for every Spend dropdown',async()=>{
+  const h=harness(),{a,w,$}=h;a.bind();w.eval(source('v2/track.js'));await turn();
+  for(const [id,value] of [['category','Category B'],['expenseCurrency','KRW'],['cashCurrency','USD']]){
+    w.document.querySelector(`[data-view="${id==='cashCurrency'?'cash':'track'}"]`).click();
+    const trigger=$(id).nextElementSibling;trigger.click();
+    const option=[...w.document.querySelectorAll('.spend-select-option')].find(el=>el.textContent===value);assert(option);
+    option.dispatchEvent(new w.PointerEvent('pointerdown',{bubbles:true,cancelable:true,pointerType:'touch'}));
+    trigger.blur();
+    option.dispatchEvent(new w.PointerEvent('pointerup',{bubbles:true,pointerType:'touch'}));option.click();
+    assert.equal($(id).value,value,`${id}: tapped value must survive focus loss before click`);
+    assert.equal(trigger.textContent,value);assert.equal(w.document.querySelector('[role="listbox"]'),null);
+  }
+  assert.equal(w.localStorage.getItem('lexiSpendV2ExpenseCurrency'),'KRW');assert.equal(a.state.cashCurrency,'USD');
+});
 await check('service worker keeps sibling caches and uses only its current offline shell',async()=>{
   const handlers={},deleted=[],matches=[];const own={match:async key=>{matches.push(key);return {own:true};}};
-  const context={URL,fetch:async()=>{throw new Error('offline');},caches:{keys:async()=>['lexi-spend2-shell-v31','lexi-spend2-shell-v32','lexi-spend2-shell-v33','lexi-spend2-shell-v34','lexi-spend-v2-old','sibling-shell'],delete:async k=>deleted.push(k),open:async()=>own,match(){throw new Error('origin-wide lookup');}},
+  const context={URL,fetch:async()=>{throw new Error('offline');},caches:{keys:async()=>['lexi-spend2-shell-v31','lexi-spend2-shell-v32','lexi-spend2-shell-v33','lexi-spend2-shell-v34','lexi-spend2-shell-v35','lexi-spend-v2-old','sibling-shell'],delete:async k=>deleted.push(k),open:async()=>own,match(){throw new Error('origin-wide lookup');}},
     self:{location:{origin:'https://example.test'},addEventListener:(t,f)=>handlers[t]=f,skipWaiting(){},clients:{claim:async()=>{}}}};
   vm.runInNewContext(source('v2/sw.js'),context);let work;
   handlers.activate({waitUntil:p=>work=p});await work;
-  assert.deepEqual(deleted.sort(),['lexi-spend-v2-old','lexi-spend2-shell-v31','lexi-spend2-shell-v32','lexi-spend2-shell-v33']);
+  assert.deepEqual(deleted.sort(),['lexi-spend-v2-old','lexi-spend2-shell-v31','lexi-spend2-shell-v32','lexi-spend2-shell-v33','lexi-spend2-shell-v34']);
   const request={url:'https://example.test/lexi-spend/v2/app.js',method:'GET'};
   handlers.fetch({request,respondWith:p=>work=p});assert.equal((await work).own,true);assert.equal(matches.length,1);
   let handled=false;handlers.fetch({request:{url:'https://example.test/sibling/app.js',method:'GET'},respondWith(){handled=true;}});
