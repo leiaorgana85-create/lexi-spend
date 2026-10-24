@@ -63,12 +63,19 @@
           </div>
         </div>
 
+        <div class="v1-amount-row">
         <div class="v1-field v1-amount-full">
           <label for="expenseAmount">Amount</label>
           <div class="v1-clear-wrap">
             <input id="expenseAmount" name="amount" type="number" inputmode="decimal" min="0" step="0.01" placeholder="0" required>
             <button id="clearAmount" class="v1-clear-field" type="button" aria-label="Clear amount">×</button>
           </div>
+        </div>
+
+        <div class="v1-field v1-actual-usd-field">
+          <label for="expenseActualUsd">Actual USD <span class="v1-optional">optional</span></label>
+          <input id="expenseActualUsd" name="actualUsd" type="number" inputmode="decimal" min="0" step="0.01" placeholder="Use FX" aria-describedby="expenseUsdPreview">
+        </div>
         </div>
 
         <div id="expenseUsdPreview" class="v1-usd-preview"></div>
