@@ -21,10 +21,11 @@ function fixture() {
       {name:'Category B',spent:0,limit:50}]} };
 }
 const windows=[];
-function harness({ realApi=false, savedPending=null, savedCurrency=null, savedCashCurrency=null }={}) {
+function harness({ realApi=false, savedPending=null, savedCurrency=null, savedCashCurrency=null, savedOutbox=null }={}) {
   const w = new Window({url:'https://example.test/lexi-spend/v2/',settings:{
     disableCSSFileLoading:true,disableJavaScriptFileLoading:true,disableIframePageLoading:true }});
   windows.push(w);
+  if(savedOutbox)w.localStorage.setItem('lexiSpendV2OutboxV1',savedOutbox);
   if(savedCashCurrency)w.localStorage.setItem('lexiSpendV2CashCurrency',savedCashCurrency);
   if(savedCurrency)w.localStorage.setItem('lexiSpendV2ExpenseCurrency',savedCurrency);
   if(savedPending)w.localStorage.setItem('lexiSpendV2PendingSaves',savedPending);
@@ -39,10 +40,10 @@ function harness({ realApi=false, savedPending=null, savedCurrency=null, savedCa
   w.SpendApi={hasCode:async()=>true,resetBridge(){calls.push(['reset']);},call:async(...args)=>{calls.push(args);return handler(...args);}};
   if(realApi)w.eval(source('v2/api.js'));
   const code=source('v2/app.js').replace('  init();',`  window.audit={state,init,bind,renderApp,configureControls,loadAppState,loadCalendarMonth,
-    beginLedgerWrite,finishLedgerWrite,saveExpense,deleteExpense,saveCash,deleteCash,
+    beginLedgerWrite,finishLedgerWrite,saveExpense,deleteExpense,saveCash,deleteCash,flushOutbox,readOutbox,
     applyCalendarExpenseSave,applyCalendarExpenseDelete,refreshLocalDates,localIsoDate,saveCalendarCache,
     updateConverter,updateExpensePreview,updateCashPreview,scheduleConverter,scheduleExpensePreview,scheduleCashPreview};`);
-  assert.notEqual(code,source('v2/app.js'),'test entrypoint marker');w.eval(code);
+  assert.notEqual(code,source('v2/app.js'),'test entrypoint marker');w.eval(code.replace('function writeOutbox(value) {', 'function writeOutbox(value) { if(window.auditStorageFull)throw Error("Storage full");'));
   const a=w.audit,$=id=>w.document.getElementById(id);
   a.state.app=clone(f);a.state.cashCurrency='THB';a.state.calendarCursor=new w.Date(2030,0,1);
   a.state.autoDates={expense:'2030-01-15',cash:'2030-01-15'};
@@ -161,36 +162,53 @@ await check('transient expense retry keeps the same Entry ID and submitted data'
     assert.deepEqual(clone(args[0]),first);return {entryId:first.entryId,usdAmount:1,recent:[],summary:h.f.summary};
   });await h.a.saveExpense({preventDefault(){}});assert.equal(h.$('expenseStatus').textContent,'Saved');
 });
-await check('manual retries and reload reuse pending expense/Cash IDs; confirmed new saves get new IDs',async()=>{
+await check('durable expense/Cash queues survive restart, failures and duplicate acknowledgements',async()=>{
   for(const kind of ['expense','cash']){
-    const h=harness(),{a,$}=h,method=kind==='expense'?'saveExpense':'saveCash',ids=[];
-    const fill=x=>{x.$('merchant').value='Example';x.$('expenseAmount').value='10';x.$('cashAmount').value='100';};fill(h);
-    h.setHandler(async(name,args)=>{ids.push(args[0].entryId);throw new Error('network timeout');});
-    await a[method]({preventDefault(){}});await a[method]({preventDefault(){}});
-    assert.equal(ids.length,4);assert.equal(new Set(ids).size,1);
-    assert.equal($(kind==='expense'?'expenseAmount':'cashAmount').value,kind==='expense'?'10':'100');
-    // Edited attempts must not destroy the identity of the original unresolved save.
-    $(kind==='expense'?'expenseAmount':'cashAmount').value='200';await a[method]({preventDefault(){}});
-    assert.notEqual(ids[4],ids[0]);
-    const reloaded=harness({savedPending:h.w.localStorage.getItem('lexiSpendV2PendingSaves')});fill(reloaded);
-    reloaded.a.saveCalendarCache('2030-01',emptyMonth());let savedId;
-    reloaded.setHandler(async(name,args)=>{
-      if(name==='getAppState')return clone(reloaded.f);
-      savedId=args[0].entryId;
-      return kind==='expense'?{entryId:savedId,usdAmount:10,recent:[],summary:clone(h.f.summary),deduped:true}
-        :{deduped:true,withdrawal:{...args[0],usdEquivalent:3}};
-    });
-    await reloaded.a[method]({preventDefault(){}});await turn();assert.equal(savedId,ids[0]);
-    // The current refresh date is not part of expense identity.
-    assert.equal(Object.values(JSON.parse(reloaded.w.localStorage.getItem('lexiSpendV2PendingSaves'))[kind]).includes(ids[0]),false);
-    fill(reloaded);await reloaded.a[method]({preventDefault(){}});await turn();assert.notEqual(savedId,ids[0]);
+    const h=harness(),method=kind==='expense'?'saveExpense':'saveCash',write=kind==='expense'?'logExpense':'addCashWithdrawal';
+    h.$('merchant').value='Example';h.$('expenseAmount').value='10';h.$('cashAmount').value='100';
+    Object.defineProperty(h.w.navigator,'onLine',{value:false,configurable:true});
+    await h.a[method]({preventDefault(){}});
+    assert.equal(h.calls.length,0);assert.equal(h.$(kind==='expense'?'expenseAmount':'cashAmount').value,'');
+    let entries=Object.values(h.a.readOutbox());assert.equal(entries.length,1);assert.equal(entries[0].name,write);
+    const submitted=clone(entries[0].params),firstId=submitted[0].entryId;
+    assert.match(h.$('connectionBadge').textContent,/1 pending/);
+    h.$('merchant').value='Example';h.$('expenseAmount').value='10';h.$('cashAmount').value='100';
+    await h.a[method]({preventDefault(){}});entries=Object.values(h.a.readOutbox());
+    assert.equal(entries.length,2);assert.notEqual(entries[1].params[0].entryId,firstId);
+    const r=harness({savedOutbox:h.w.localStorage.getItem('lexiSpendV2OutboxV1')});
+    r.setHandler(async(name)=>{if(name===write)throw Error('network timeout');return name==='getAppState'?clone(r.f):emptyMonth();});
+    await r.a.flushOutbox();assert.equal(Object.keys(r.a.readOutbox()).length,2);
+    const sent=[];r.setHandler(async(name,args)=>{if(name===write){sent.push(clone(args));return {deduped:true};}return name==='getAppState'?clone(r.f):emptyMonth();});
+    await r.a.flushOutbox();assert.deepEqual(sent[0],submitted);assert.equal(sent.length,2);assert.equal(Object.keys(r.a.readOutbox()).length,0);
+    assert.equal(r.a.state.app.cashWallets.THB.balance,2000);
   }
 });
-await check('expense retry keeps identity across day change with its explicit row date',async()=>{
-  const h=harness(),ids=[];h.$('merchant').value='Example';h.$('expenseAmount').value='10';
-  h.setHandler(async(name,args)=>{ids.push(args[0].entryId);throw new Error('network timeout');});
-  await h.a.saveExpense({preventDefault(){}});h.setNow('2030-01-16T12:00:00Z');
-  await h.a.saveExpense({preventDefault(){}});assert.equal(new Set(ids).size,1);
+await check('ambiguous save preserves original row/date/Actual USD through a day change',async()=>{
+  const h=harness();h.a.state.app.supportsActualUsd=true;
+  h.$('merchant').value='Example';h.$('expenseAmount').value='10';h.$('expenseActualUsd').value='1.23';
+  h.setHandler(async()=>{throw Error('network timeout');});await h.a.saveExpense({preventDefault(){}});
+  const entry=Object.values(h.a.readOutbox())[0];h.setNow('2030-01-16T12:00:00Z');const sent=[];
+  h.setHandler(async(name,args)=>{if(name==='logExpense'){sent.push(clone(args[0]));return {deduped:true};}return name==='getAppState'?clone(h.f):emptyMonth();});
+  await h.a.flushOutbox();assert.equal(sent[0].entryId,entry.params[0].entryId);assert.equal(sent[0].date,'2030-01-15');assert.equal(sent[0].actualUsd,1.23);
+});
+await check('offline deletes retry once per ID and preserve balances before acknowledgement',async()=>{
+  const h=harness();Object.defineProperty(h.w.navigator,'onLine',{value:false,configurable:true});
+  await h.a.deleteExpense({entryId:'e1',merchant:'Example',date:'2030-01-15'});
+  await h.a.deleteCash({entryId:'c1',amount:100,currency:'THB',date:'2030-01-15'});
+  assert.equal(Object.keys(h.a.readOutbox()).length,2);assert.equal(h.a.state.app.cashWallets.THB.balance,2000);
+  Object.defineProperty(h.w.navigator,'onLine',{value:true,configurable:true});const sent=[];
+  h.setHandler(async(name,args)=>{if(name.startsWith('delete')){sent.push([name,args[0]]);return {alreadyDeleted:true};}return name==='getAppState'?clone(h.f):emptyMonth();});
+  await Promise.all([h.a.flushOutbox(),h.a.flushOutbox()]);assert.deepEqual(sent,[['deleteExpense','e1'],['deleteCashWithdrawal','c1']]);assert.equal(Object.keys(h.a.readOutbox()).length,0);
+});
+await check('storage failure retains form and never sends an unrecorded row',async()=>{
+  const h=harness();h.$('merchant').value='Example';h.$('expenseAmount').value='10';
+  h.w.auditStorageFull=true;
+  await h.a.saveExpense({preventDefault(){}});assert.equal(h.calls.length,0);assert.equal(h.$('expenseAmount').value,'10');assert.match(h.$('expenseStatus').textContent,/Storage full/);
+});
+await check('reconnect resets an offline bridge only outside an active ledger write',async()=>{
+  const h=harness();h.a.bind();h.a.state.busy=true;
+  h.w.dispatchEvent(new h.w.Event('online'));await turn();assert.equal(h.calls.filter(x=>x[0]==='reset').length,0);
+  h.a.state.busy=false;h.w.dispatchEvent(new h.w.Event('online'));await turn();assert.equal(h.calls.filter(x=>x[0]==='reset').length,1);
 });
 await check('deduped withdrawal refreshes canonical balances without applying a second delta',async()=>{
   const h=harness(),{a,$}=h;let read;
@@ -329,7 +347,7 @@ await check('service worker keeps sibling caches and uses only its current offli
     self:{location:{origin:'https://example.test'},addEventListener:(t,f)=>handlers[t]=f,skipWaiting(){},clients:{claim:async()=>{}}}};
   vm.runInNewContext(source('v2/sw.js'),context);let work;
   handlers.activate({waitUntil:p=>work=p});await work;
-  assert.deepEqual(deleted.sort(),['lexi-spend-v2-old','lexi-spend2-shell-v31','lexi-spend2-shell-v32','lexi-spend2-shell-v33','lexi-spend2-shell-v34','lexi-spend2-shell-v35','lexi-spend2-shell-v36','lexi-spend2-shell-v37','lexi-spend2-shell-v38']);
+  assert.deepEqual(deleted.sort(),['lexi-spend-v2-old','lexi-spend2-shell-v31','lexi-spend2-shell-v32','lexi-spend2-shell-v33','lexi-spend2-shell-v34','lexi-spend2-shell-v35','lexi-spend2-shell-v36','lexi-spend2-shell-v37','lexi-spend2-shell-v38','lexi-spend2-shell-v39']);
   const request={url:'https://example.test/lexi-spend/v2/app.js',method:'GET'};
   handlers.fetch({request,respondWith:p=>work=p});assert.equal((await work).own,true);assert.equal(matches.length,1);
   let handled=false;handlers.fetch({request:{url:'https://example.test/sibling/app.js',method:'GET'},respondWith(){handled=true;}});
