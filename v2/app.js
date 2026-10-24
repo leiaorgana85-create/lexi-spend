@@ -1143,8 +1143,13 @@
       if (!(await SpendApi.hasCode()) || state.syncing) return;
       if (state.busy) { state.syncQueued = true; return; }
       SpendApi.resetBridge();
-      const refreshed = await loadAppState(false);
-      if (refreshed) void loadCalendarMonth(monthKey(state.calendarCursor), true);
+      window.LexiLifecycle?.mark('data-refresh-start');
+      try {
+        const refreshed = await loadAppState(false);
+        if (refreshed) void loadCalendarMonth(monthKey(state.calendarCursor), true);
+      } finally {
+        window.LexiLifecycle?.mark('data-refresh-end');
+      }
     });
     setInterval(() => {
       if (document.visibilityState === 'visible' && refreshLocalDates()) void loadAppState(false);
