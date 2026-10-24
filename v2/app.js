@@ -9,6 +9,8 @@
   const APP_STATE_CACHE_KEY = 'lexiSpendV2AppState';
   const PENDING_SAVES_KEY = 'lexiSpendV2PendingSaves';
   const pendingSaves = readJson(PENDING_SAVES_KEY) || {};
+  const OUTBOX_KEY = 'lexiSpendV2OutboxV1';
+  let outboxFlight = null;
   const $ = id => document.getElementById(id);
 
   const state = {
@@ -169,7 +171,7 @@
   function setLedgerButtons(disabled) {
     ['saveExpenseButton', 'saveCashButton'].forEach(id => { $(id).disabled = disabled; });
     document.querySelectorAll('#recentTransactions .deleteCompact, #recentWithdrawals .deleteCompact')
-      .forEach(button => { button.disabled = disabled; });
+      .forEach(button => { button.disabled = disabled || button.dataset.pending === 'true'; });
   }
 
   function finishLedgerWrite() {
@@ -183,7 +185,12 @@
   function renderRecent() {
     const host = $('recentTransactions');
     host.replaceChildren();
-    const rows = Array.isArray(state.app?.recent) ? state.app.recent : [];
+    const pending = Object.values(readOutbox()).filter(x => x.name === 'logExpense').map(x => ({
+      ...x.params[0], localAmount:x.params[0].amount, _pending:true
+    }));
+    const confirmed = Array.isArray(state.app?.recent) ? state.app.recent : [];
+    const pendingIds = new Set(pending.map(x => x.entryId));
+    const rows = [...pending.reverse(), ...confirmed.filter(x => !pendingIds.has(x.entryId))];
     if (!rows.length) {
       host.innerHTML = '<div class="list-empty">No spending.</div>';
       return;
@@ -202,7 +209,7 @@
 
       const meta = document.createElement('div');
       meta.className = 'txnCompactMeta';
-      meta.textContent = [tx.date, tx.paymentMethod].filter(Boolean).join(' · ');
+      meta.textContent = [tx.date, tx.paymentMethod, tx._pending ? 'Saved on device · sync pending' : ''].filter(Boolean).join(' · ');
       main.append(title, meta);
 
       const amount = document.createElement('div');
@@ -222,6 +229,8 @@
       del.textContent = '×';
       del.setAttribute('aria-label', 'Delete transaction');
       del.title = 'Delete';
+      del.dataset.pending = String(Boolean(tx._pending));
+      del.disabled = Boolean(tx._pending);
       del.addEventListener('click', () => deleteExpense(tx));
 
       row.append(main, amount, del);
@@ -367,13 +376,15 @@
     renderCash();
     setLedgerButtons(state.busy);
     setText('settingsBackendVersion', state.app.appVersion || '—');
-    setText('settingsFrontendVersion', 'v2.1.1');
+    setText('settingsFrontendVersion', 'v2.2.0');
+    renderOutboxStatus();
     if (persist) saveJson(APP_STATE_CACHE_KEY, { savedAt:Date.now(), app:state.app });
   }
 
   function setConnected() {
     setText('settingsConnection', 'Connected');
     setConnection('Connected', 'ok');
+    renderOutboxStatus();
   }
 
   function restoreCachedAppState() {
@@ -406,6 +417,7 @@
   }
 
   async function loadAppState(showError = true) {
+    if (navigator.onLine === false) { renderOutboxStatus(); return false; }
     if (state.busy) { state.syncQueued = true; return false; }
     if (state.syncing) return false;
     state.syncQueued = false;
@@ -580,6 +592,7 @@
     const input = $('receiptInput');
     const file = input?.files?.[0] || null;
     if (!file) return;
+    if (navigator.onLine === false) { setReceiptStatus('Receipt upload needs a connection. Keep the photo and upload online.', true); return; }
     const receiptId = uuid();
     try {
       $('receiptButton').disabled = true;
@@ -608,6 +621,93 @@
       if (!/timed out|network|connect/i.test(message)) throw first;
       return await SpendApi.call(name, params);
     }
+  }
+
+  function readOutbox() { return readJson(OUTBOX_KEY) || {}; }
+
+  function writeOutbox(value) {
+    // A failed durable save must leave the form intact, never claim success.
+    localStorage.setItem(OUTBOX_KEY, JSON.stringify(value));
+  }
+
+  function renderOutboxStatus() {
+    const entries = Object.values(readOutbox());
+    const count = entries.length;
+    const text = count ? `${navigator.onLine === false ? 'Offline · ' : ''}${count} pending · totals exclude pending`
+      : navigator.onLine === false ? 'Offline · saved data' : '';
+    if (text) { setConnection(text); setText('settingsConnection', text); }
+    let host = $('pendingChanges');
+    if (!host && entries.length) {
+      host = document.createElement('div'); host.id = 'pendingChanges';
+      host.className = 'txnCompactMeta'; host.setAttribute('role', 'status');
+      $('recentTransactions')?.after(host);
+    }
+    if (host) {
+      host.hidden = !entries.length;
+      host.textContent = entries.map(x => {
+        const p = x.params[0];
+        const label = x.name === 'logExpense' ? `${p.merchant} · ${p.amount} ${p.currency}`
+          : x.name === 'addCashWithdrawal' ? `Withdrawal · ${p.amount} ${p.currency}`
+          : x.name === 'deleteExpense' ? 'Expense deletion' : 'Withdrawal deletion';
+        return `${label} · waiting to sync${x.error ? ' · ' + x.error : ''}`;
+      }).join(' | ');
+    }
+  }
+
+  async function durableWrite(name, params, affectedDate = '') {
+    const id = `${name}:${typeof params[0] === 'object' ? params[0].entryId : params[0]}`;
+    const all = readOutbox();
+    all[id] = { name, params, affectedDate:affectedDate || params[0]?.date || '', token:uuid() };
+    writeOutbox(all);
+    const entry = all[id];
+    if (navigator.onLine === false) { renderOutboxStatus(); return { queued:true }; }
+    try {
+      const result = await retryWrite(name, params);
+      const latest = readOutbox();
+      if (latest[id]?.token === entry.token) { delete latest[id]; writeOutbox(latest); }
+      renderOutboxStatus();
+      return result;
+    } catch (error) {
+      const latest = readOutbox();
+      if (latest[id]?.token === entry.token) {
+        latest[id].error = String(error?.message || 'Connection unavailable'); writeOutbox(latest);
+      }
+      renderOutboxStatus();
+      // The complete submitted row is durable even after an ambiguous response.
+      return { queued:true };
+    }
+  }
+
+  function flushOutbox() {
+    if (outboxFlight || state.busy || navigator.onLine === false || document.visibilityState === 'hidden') return outboxFlight || Promise.resolve();
+    if (!Object.keys(readOutbox()).length) return Promise.resolve();
+    outboxFlight = (async () => {
+      if (!await SpendApi.hasCode() || state.busy) return;
+      const changedMonths = new Set(Object.values(readOutbox()).map(x => x.affectedDate?.slice(0,7) || x.params[0]?.date?.slice(0,7)).filter(Boolean));
+      beginLedgerWrite();
+      try {
+        for (const [id, entry] of Object.entries(readOutbox())) {
+          if (navigator.onLine === false) break;
+          if (readOutbox()[id]?.token !== entry.token) continue;
+          try {
+            await retryWrite(entry.name, entry.params);
+            const latest = readOutbox();
+            if (latest[id]?.token === entry.token) { delete latest[id]; writeOutbox(latest); }
+          } catch (error) {
+            const latest = readOutbox();
+            if (latest[id]?.token === entry.token) {
+              latest[id].error = String(error?.message || 'Connection unavailable'); writeOutbox(latest);
+            }
+            break;
+          }
+        }
+      } finally { finishLedgerWrite(); }
+      // Re-read canonical totals and Calendar after acknowledgement; never invent FX.
+      await loadAppState(false);
+      if (state.activeView === 'calendar') changedMonths.add(monthKey(state.calendarCursor));
+      for (const month of changedMonths) await loadCalendarMonth(month, true);
+    })().finally(() => { outboxFlight = null; renderOutboxStatus(); renderRecent(); });
+    return outboxFlight;
   }
 
   function pendingSave(kind, payload) {
@@ -653,8 +753,13 @@
     };
     const { entryId, signature } = pendingSave('expense', payload);
     try {
-      const result = await retryWrite('logExpense', [{ ...payload, entryId }]);
+      const result = await durableWrite('logExpense', [{ ...payload, entryId }]);
       confirmSave('expense', signature);
+      if (result.queued) {
+        clearSubmittedFields(submitted); setText('expenseUsdPreview', '');
+        renderRecent(); renderOutboxStatus();
+        setStatus('expenseStatus', 'Saved on device · will sync automatically'); return;
+      }
 
       const calendarExpense = {
         entryId:result.entryId || entryId,
@@ -690,9 +795,10 @@
     beginLedgerWrite();
     setStatus('expenseStatus', 'Deleting…');
     try {
-      const result = await retryWrite('deleteExpense', [tx.entryId, localIsoDate(), {
+      const result = await durableWrite('deleteExpense', [tx.entryId, localIsoDate(), {
         name:state.app?.stayName || '', start:state.app?.stayStart || '', end:state.app?.stayEnd || '', status:state.app?.stayStatus || ''
-      }]);
+      }], tx.date);
+      if (result.queued) { setStatus('expenseStatus', 'Deletion saved on device · sync pending'); return; }
       state.app = { ...state.app, recent:result.recent, summary:result.summary };
       const deletedCash = String(result.deleted?.paymentMethod || tx.paymentMethod || '') === 'Cash';
       if (deletedCash && (result.alreadyDeleted || !applyCashSpendDeletion(result.deleted))) {
@@ -782,8 +888,12 @@
     };
     const { entryId, signature } = pendingSave('cash', payload);
     try {
-      const result = await retryWrite('addCashWithdrawal', [{ ...payload, entryId }]);
+      const result = await durableWrite('addCashWithdrawal', [{ ...payload, entryId }]);
       confirmSave('cash', signature);
+      if (result.queued) {
+        clearSubmittedFields(submitted); setText('cashUsdPreview', ''); renderOutboxStatus();
+        setStatus('cashStatus', 'Saved on device · will sync automatically'); return;
+      }
       if (result.deduped) state.syncQueued = true;
       else applyCashWithdrawalDelta(result.withdrawal, 1);
       clearSubmittedFields(submitted);
@@ -799,7 +909,8 @@
     beginLedgerWrite();
     setStatus('cashStatus', 'Deleting…');
     try {
-      const result = await retryWrite('deleteCashWithdrawal', [withdrawal.entryId]);
+      const result = await durableWrite('deleteCashWithdrawal', [withdrawal.entryId]);
+      if (result.queued) { setStatus('cashStatus', 'Deletion saved on device · sync pending'); return; }
       if (result.alreadyDeleted) state.syncQueued = true;
       else applyCashWithdrawalDelta(result.deleted || withdrawal, -1);
       setStatus('cashStatus', 'Deleted');
@@ -1142,11 +1253,19 @@
       state.selectedDate = '';
       loadCalendarMonth(monthKey(state.calendarCursor));
     });
+    window.addEventListener('online', () => {
+      if (!state.busy) SpendApi.resetBridge();
+      void flushOutbox().then(() => loadAppState(false));
+    });
+    window.addEventListener('offline', renderOutboxStatus);
+    window.addEventListener('pageshow', () => { void flushOutbox(); });
+    setInterval(() => { if (document.visibilityState !== 'hidden') void flushOutbox(); }, 30000);
     document.addEventListener('visibilitychange', async () => {
       if (document.visibilityState === 'hidden') {
         state.hiddenAt = Date.now();
         return;
       }
+      void flushOutbox();
       const awayMs = state.hiddenAt ? Date.now() - state.hiddenAt : 0;
       state.hiddenAt = 0;
       const dayChanged = refreshLocalDates();
@@ -1181,6 +1300,7 @@
     if (await SpendApi.hasCode()) {
       const refreshed = await loadAppState(false);
       if (refreshed) void loadCalendarMonth(monthKey(state.calendarCursor));
+      void flushOutbox();
     } else {
       setConnection('Not connected', 'error');
       openConnectDialog();
