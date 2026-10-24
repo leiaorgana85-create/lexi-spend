@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const CURRENCIES = ['THB','KRW','VND','JPY','MXN','USD'];
+  const CURRENCIES = ['THB','KRW','VND','MXN','USD'];
   const VIEW_KEY = 'lexiSpendV2ActiveView';
   const EXPENSE_CURRENCY_KEY = 'lexiSpendV2ExpenseCurrency';
   const CASH_CURRENCY_KEY = 'lexiSpendV2CashCurrency';
@@ -123,7 +123,8 @@
   }
 
   function configureControls() {
-    const defaultCurrency = state.app?.currency || 'THB';
+    const defaultCurrency = CURRENCIES.includes(state.app?.currency) ? state.app.currency : 'THB';
+    if (!CURRENCIES.includes(state.cashCurrency)) state.cashCurrency = defaultCurrency;
     fillSelect($('expenseCurrency'), CURRENCIES, $('expenseCurrency').value || readExpenseCurrency() || defaultCurrency);
     fillSelect($('cashCurrency'), CURRENCIES, state.cashCurrency || defaultCurrency);
     const categorySelect = $('category');
@@ -366,7 +367,7 @@
     renderCash();
     setLedgerButtons(state.busy);
     setText('settingsBackendVersion', state.app.appVersion || '—');
-    setText('settingsFrontendVersion', 'v2.0.8');
+    setText('settingsFrontendVersion', 'v2.0.9');
     if (persist) saveJson(APP_STATE_CACHE_KEY, { savedAt:Date.now(), app:state.app });
   }
 
@@ -394,7 +395,10 @@
   }
 
   function readCashCurrency() {
-    try { return String(localStorage.getItem(CASH_CURRENCY_KEY) || '').trim(); } catch (_) { return ''; }
+    try {
+      const value = String(localStorage.getItem(CASH_CURRENCY_KEY) || '').trim();
+      return CURRENCIES.includes(value) ? value : '';
+    } catch (_) { return ''; }
   }
   function saveCashCurrency(value) {
     state.cashCurrency = value;

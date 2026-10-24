@@ -21,10 +21,11 @@ function fixture() {
       {name:'Category B',spent:0,limit:50}]} };
 }
 const windows=[];
-function harness({ realApi=false, savedPending=null, savedCurrency=null }={}) {
+function harness({ realApi=false, savedPending=null, savedCurrency=null, savedCashCurrency=null }={}) {
   const w = new Window({url:'https://example.test/lexi-spend/v2/',settings:{
     disableCSSFileLoading:true,disableJavaScriptFileLoading:true,disableIframePageLoading:true }});
   windows.push(w);
+  if(savedCashCurrency)w.localStorage.setItem('lexiSpendV2CashCurrency',savedCashCurrency);
   if(savedCurrency)w.localStorage.setItem('lexiSpendV2ExpenseCurrency',savedCurrency);
   if(savedPending)w.localStorage.setItem('lexiSpendV2PendingSaves',savedPending);
   const html=fs.readFileSync(path.join(htmlRoot,'v2/index.html'),'utf8')
@@ -314,13 +315,21 @@ await check('option taps survive trigger blur before click for every Spend dropd
   }
   assert.equal(w.localStorage.getItem('lexiSpendV2ExpenseCurrency'),'KRW');assert.equal(a.state.cashCurrency,'USD');
 });
+await check('JPY is absent from both currency menus and legacy preferences safely fall back without deleting history',async()=>{
+  const h=harness({savedCurrency:'JPY',savedCashCurrency:'JPY'}),{a,$}=h;await a.init();await turn();
+  for(const id of ['expenseCurrency','cashCurrency']){
+    assert.deepEqual([...$(id).options].map(o=>o.value),['THB','KRW','VND','MXN','USD']);assert.equal($(id).value,'THB');
+  }
+  a.state.app.cashWallets.JPY={currency:'JPY',balance:1000,calendarMonthFeesUsd:2};a.state.cashCurrency='JPY';a.renderApp();
+  assert.equal(a.state.cashCurrency,'THB');assert.equal($('cashCurrency').value,'THB');assert.equal(a.state.app.cashWallets.JPY.balance,1000);
+});
 await check('service worker keeps sibling caches and uses only its current offline shell',async()=>{
   const handlers={},deleted=[],matches=[];const own={match:async key=>{matches.push(key);return {own:true};}};
-  const context={URL,fetch:async()=>{throw new Error('offline');},caches:{keys:async()=>['lexi-spend2-shell-v31','lexi-spend2-shell-v32','lexi-spend2-shell-v33','lexi-spend2-shell-v34','lexi-spend2-shell-v35','lexi-spend-v2-old','sibling-shell'],delete:async k=>deleted.push(k),open:async()=>own,match(){throw new Error('origin-wide lookup');}},
+  const context={URL,fetch:async()=>{throw new Error('offline');},caches:{keys:async()=>['lexi-spend2-shell-v31','lexi-spend2-shell-v32','lexi-spend2-shell-v33','lexi-spend2-shell-v34','lexi-spend2-shell-v35','lexi-spend2-shell-v36','lexi-spend-v2-old','sibling-shell'],delete:async k=>deleted.push(k),open:async()=>own,match(){throw new Error('origin-wide lookup');}},
     self:{location:{origin:'https://example.test'},addEventListener:(t,f)=>handlers[t]=f,skipWaiting(){},clients:{claim:async()=>{}}}};
   vm.runInNewContext(source('v2/sw.js'),context);let work;
   handlers.activate({waitUntil:p=>work=p});await work;
-  assert.deepEqual(deleted.sort(),['lexi-spend-v2-old','lexi-spend2-shell-v31','lexi-spend2-shell-v32','lexi-spend2-shell-v33','lexi-spend2-shell-v34']);
+  assert.deepEqual(deleted.sort(),['lexi-spend-v2-old','lexi-spend2-shell-v31','lexi-spend2-shell-v32','lexi-spend2-shell-v33','lexi-spend2-shell-v34','lexi-spend2-shell-v35']);
   const request={url:'https://example.test/lexi-spend/v2/app.js',method:'GET'};
   handlers.fetch({request,respondWith:p=>work=p});assert.equal((await work).own,true);assert.equal(matches.length,1);
   let handled=false;handlers.fetch({request:{url:'https://example.test/sibling/app.js',method:'GET'},respondWith(){handled=true;}});
