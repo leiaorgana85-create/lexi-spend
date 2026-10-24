@@ -193,7 +193,7 @@
 @media (hover: hover) { .spend-select-option:not([aria-disabled="true"]):hover { background: var(--line); } }
 
 /* Keep both amounts together on the iPhone mini. */
-.v1-amount-row { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:8px; align-items:end; margin-top:7px; }
+.v1-amount-row { display:grid; grid-template-columns:minmax(0,1fr) 116px; gap:8px; align-items:end; margin-top:7px; }
 .v1-amount-row .v1-amount-full { margin-top:0; }
 .v1-actual-usd-field #expenseActualUsd { width:100%; box-sizing:border-box; height:40px; min-height:40px; padding:4px 8px; font-size:17px; font-weight:800; }
 .v1-actual-usd-field label { display:flex; align-items:baseline; gap:4px; }

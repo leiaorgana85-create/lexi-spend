@@ -325,18 +325,18 @@ await check('JPY is absent from both currency menus and legacy preferences safel
 });
 await check('service worker keeps sibling caches and uses only its current offline shell',async()=>{
   const handlers={},deleted=[],matches=[];const own={match:async key=>{matches.push(key);return {own:true};}};
-  const context={URL,fetch:async()=>{throw new Error('offline');},caches:{keys:async()=>['lexi-spend2-shell-v31','lexi-spend2-shell-v32','lexi-spend2-shell-v33','lexi-spend2-shell-v34','lexi-spend2-shell-v35','lexi-spend2-shell-v36','lexi-spend2-shell-v37','lexi-spend2-shell-v38','lexi-spend-v2-old','sibling-shell'],delete:async k=>deleted.push(k),open:async()=>own,match(){throw new Error('origin-wide lookup');}},
+  const context={URL,fetch:async()=>{throw new Error('offline');},caches:{keys:async()=>['lexi-spend2-shell-v31','lexi-spend2-shell-v32','lexi-spend2-shell-v33','lexi-spend2-shell-v34','lexi-spend2-shell-v35','lexi-spend2-shell-v36','lexi-spend2-shell-v37','lexi-spend2-shell-v38','lexi-spend2-shell-v39','lexi-spend-v2-old','sibling-shell'],delete:async k=>deleted.push(k),open:async()=>own,match(){throw new Error('origin-wide lookup');}},
     self:{location:{origin:'https://example.test'},addEventListener:(t,f)=>handlers[t]=f,skipWaiting(){},clients:{claim:async()=>{}}}};
   vm.runInNewContext(source('v2/sw.js'),context);let work;
   handlers.activate({waitUntil:p=>work=p});await work;
-  assert.deepEqual(deleted.sort(),['lexi-spend-v2-old','lexi-spend2-shell-v31','lexi-spend2-shell-v32','lexi-spend2-shell-v33','lexi-spend2-shell-v34','lexi-spend2-shell-v35','lexi-spend2-shell-v36','lexi-spend2-shell-v37']);
+  assert.deepEqual(deleted.sort(),['lexi-spend-v2-old','lexi-spend2-shell-v31','lexi-spend2-shell-v32','lexi-spend2-shell-v33','lexi-spend2-shell-v34','lexi-spend2-shell-v35','lexi-spend2-shell-v36','lexi-spend2-shell-v37','lexi-spend2-shell-v38']);
   const request={url:'https://example.test/lexi-spend/v2/app.js',method:'GET'};
   handlers.fetch({request,respondWith:p=>work=p});assert.equal((await work).own,true);assert.equal(matches.length,1);
   let handled=false;handlers.fetch({request:{url:'https://example.test/sibling/app.js',method:'GET'},respondWith(){handled=true;}});
   assert.equal(handled,false);
 });
 await check('Actual USD overrides preview and is submitted, including explicit zero',async()=>{
-  for (const value of ['3.21','0']) {
+  for (const value of ['11.11','0']) {
     const h=harness(),{a,$}=h;a.state.app.supportsActualUsd=true;
     $('merchant').value='Posted charge';$('expenseAmount').value='100';$('expenseActualUsd').value=value;
     await a.updateExpensePreview();assert.equal(h.calls.length,0);
