@@ -325,15 +325,48 @@ await check('JPY is absent from both currency menus and legacy preferences safel
 });
 await check('service worker keeps sibling caches and uses only its current offline shell',async()=>{
   const handlers={},deleted=[],matches=[];const own={match:async key=>{matches.push(key);return {own:true};}};
-  const context={URL,fetch:async()=>{throw new Error('offline');},caches:{keys:async()=>['lexi-spend2-shell-v31','lexi-spend2-shell-v32','lexi-spend2-shell-v33','lexi-spend2-shell-v34','lexi-spend2-shell-v35','lexi-spend2-shell-v36','lexi-spend2-shell-v37','lexi-spend-v2-old','sibling-shell'],delete:async k=>deleted.push(k),open:async()=>own,match(){throw new Error('origin-wide lookup');}},
+  const context={URL,fetch:async()=>{throw new Error('offline');},caches:{keys:async()=>['lexi-spend2-shell-v31','lexi-spend2-shell-v32','lexi-spend2-shell-v33','lexi-spend2-shell-v34','lexi-spend2-shell-v35','lexi-spend2-shell-v36','lexi-spend2-shell-v37','lexi-spend2-shell-v38','lexi-spend-v2-old','sibling-shell'],delete:async k=>deleted.push(k),open:async()=>own,match(){throw new Error('origin-wide lookup');}},
     self:{location:{origin:'https://example.test'},addEventListener:(t,f)=>handlers[t]=f,skipWaiting(){},clients:{claim:async()=>{}}}};
   vm.runInNewContext(source('v2/sw.js'),context);let work;
   handlers.activate({waitUntil:p=>work=p});await work;
-  assert.deepEqual(deleted.sort(),['lexi-spend-v2-old','lexi-spend2-shell-v31','lexi-spend2-shell-v32','lexi-spend2-shell-v33','lexi-spend2-shell-v34','lexi-spend2-shell-v35','lexi-spend2-shell-v36']);
+  assert.deepEqual(deleted.sort(),['lexi-spend-v2-old','lexi-spend2-shell-v31','lexi-spend2-shell-v32','lexi-spend2-shell-v33','lexi-spend2-shell-v34','lexi-spend2-shell-v35','lexi-spend2-shell-v36','lexi-spend2-shell-v37']);
   const request={url:'https://example.test/lexi-spend/v2/app.js',method:'GET'};
   handlers.fetch({request,respondWith:p=>work=p});assert.equal((await work).own,true);assert.equal(matches.length,1);
   let handled=false;handlers.fetch({request:{url:'https://example.test/sibling/app.js',method:'GET'},respondWith(){handled=true;}});
   assert.equal(handled,false);
+});
+await check('Actual USD overrides preview and is submitted, including explicit zero',async()=>{
+  for (const value of ['3.21','0']) {
+    const h=harness(),{a,$}=h;a.state.app.supportsActualUsd=true;
+    $('merchant').value='Posted charge';$('expenseAmount').value='100';$('expenseActualUsd').value=value;
+    await a.updateExpensePreview();assert.equal(h.calls.length,0);
+    assert.equal($('expenseUsdPreview').textContent,`Actual $${Number(value).toFixed(2)}`);
+    let payload;h.setHandler((name,args)=>{if(name!=='logExpense') return emptyMonth();payload=args[0];return {usdAmount:Number(value),recent:[],summary:h.f.summary};});
+    await a.saveExpense({preventDefault(){}});assert.equal(payload.actualUsd,Number(value));
+    assert.equal($('expenseActualUsd').value,'');
+  }
+});
+await check('blank Actual USD preserves old backend saves; overrides cannot be silently ignored',async()=>{
+  const h=harness(),{a,$}=h;$('merchant').value='Shop';$('expenseAmount').value='100';
+  let payload;h.setHandler((name,args)=>{if(name!=='logExpense') return emptyMonth();payload=args[0];return {usdAmount:3,recent:[],summary:h.f.summary};});
+  await a.saveExpense({preventDefault(){}});assert(!('actualUsd' in payload));
+  $('merchant').value='Shop';$('expenseAmount').value='100';$('expenseActualUsd').value='2.50';
+  const before=h.calls.length;await a.saveExpense({preventDefault(){}});
+  assert.equal(h.calls.length,before);assert.match($('expenseStatus').textContent,/backend update/);
+});
+await check('FX preview cannot overwrite a newer Actual USD draft',async()=>{
+  const h=harness(),{a,$}=h;let reply;$('expenseAmount').value='100';
+  h.setHandler(()=>new Promise(resolve=>reply=resolve));const pending=a.updateExpensePreview();
+  $('expenseActualUsd').value='2.50';await a.updateExpensePreview();reply({usdAmount:3});await pending;
+  assert.equal($('expenseUsdPreview').textContent,'Actual $2.50');
+});
+await check('Actual USD draft survives background reads and edits during save',async()=>{
+  const h=harness(),{a,$}=h;a.state.app.supportsActualUsd=true;
+  $('merchant').value='Shop';$('expenseAmount').value='100';$('expenseActualUsd').value='2.50';
+  let resolveSave;h.setHandler(()=>new Promise(resolve=>resolveSave=resolve));
+  const pending=a.saveExpense({preventDefault(){}});$('expenseActualUsd').value='2.60';
+  resolveSave({usdAmount:2.5,recent:[],summary:h.f.summary});await pending;
+  assert.equal($('expenseActualUsd').value,'2.60');
 });
 console.log(`${passed} regression groups passed. DOM/API responses are simulated; no live ledger writes.`);
 } finally {for(const w of windows)await w.happyDOM.close();}

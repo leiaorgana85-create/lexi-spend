@@ -60,6 +60,7 @@ function v2TransactionView_(row) {
     country:String(row[8] || ''),
     note:String(row[9] || ''),
     entryId:String(row[12] || ''),
+    actualUsd:row[15] === '' || row[15] == null ? '' : Number(row[15]),
     receiptUrl:String(row[13] || '')
   };
 }
@@ -76,7 +77,7 @@ function v2ExtendRecentTransactions_(recent, limit) {
 
   for (let endRow = lastRow; endRow >= 2 && out.length < target; endRow -= batchSize) {
     const startRow = Math.max(2, endRow - batchSize + 1);
-    const rows = sheet.getRange(startRow, 1, endRow - startRow + 1, 15).getValues();
+    const rows = sheet.getRange(startRow, 1, endRow - startRow + 1, 16).getValues();
 
     for (let i = rows.length - 1; i >= 0 && out.length < target; i--) {
       const row = rows[i];
@@ -92,8 +93,13 @@ function v2ExtendRecentTransactions_(recent, limit) {
 }
 
 function v2GetAppState_(today, cashCurrency) {
+  v2EnsureActualUsdSchema_();
   const result = getAppState(today, cashCurrency);
-  result.recent = v2ExtendRecentTransactions_(result.recent, 4);
+  result.supportsActualUsd = true;
+  result.recent = v2ExtendRecentTransactions_(result.recent, 4).map(tx => {
+    const found = v2FindTransactionById_(getSheet_(), tx.entryId);
+    return found ? v2TransactionView_(found.row) : tx;
+  });
   return result;
 }
 
@@ -109,7 +115,7 @@ function v2FindTransactionById_(sheet, entryId) {
   const rowNumber = match.getRow();
   return {
     rowNumber,
-    row: sheet.getRange(rowNumber, 1, 1, 15).getValues()[0]
+    row: sheet.getRange(rowNumber, 1, 1, 16).getValues()[0]
   };
 }
 
@@ -150,7 +156,10 @@ function v2AssertTransactionRetryMatches_(row, expected) {
     actualCountry === expected.country &&
     actualNote === expected.note &&
     actualReceiptUrl === expected.receiptUrl &&
-    actualReceiptFileId === expected.receiptFileId;
+    actualReceiptFileId === expected.receiptFileId &&
+    (expected.actualUsd === ''
+      ? row[15] === '' || row[15] == null
+      : row[15] !== '' && row[15] != null && v2MoneyEqual_(row[15], expected.actualUsd));
 
   if (!same) {
     throw new Error('Entry ID already exists with different expense data.');
@@ -178,7 +187,7 @@ function v2TransactionReturn_(entryId, usdAmount, fxRate, fxEffectiveDate, today
   const sheet = getSheet_();
   const lastRow = sheet.getLastRow();
   const rows = lastRow >= 2
-    ? sheet.getRange(2, 1, lastRow - 1, 15).getValues()
+    ? sheet.getRange(2, 1, lastRow - 1, 16).getValues()
     : [];
 
   return {
@@ -188,7 +197,7 @@ function v2TransactionReturn_(entryId, usdAmount, fxRate, fxEffectiveDate, today
     usdAmount: roundMoney_(usdAmount),
     fxRate: Number(fxRate || 0),
     fxEffectiveDate: String(fxEffectiveDate || ''),
-    recent: getRecentTransactions_(4, rows),
+    recent: rows.filter(row => normalizeCategory_(row[2]) !== 'Housing').slice(-4).reverse().map(v2TransactionView_),
     summary: getSpendingSummary_(today, rows),
     cash: paymentMethod === 'Cash'
       ? getCashState_(currency, null, rows, today)
@@ -211,6 +220,7 @@ function v2LogExpense_(data) {
   const today = normalizeIsoDate_(data.today) || todayIso_();
   const receiptUrl = String(data.receiptUrl || '').trim();
   const receiptFileId = String(data.receiptFileId || '').trim();
+  const actualUsd = v2ActualUsd_(data.actualUsd);
 
   if (!date) throw new Error('Invalid date.');
   if (!merchant) throw new Error('Merchant is required.');
@@ -223,11 +233,12 @@ function v2LogExpense_(data) {
   if (!allowedCategory) throw new Error('Invalid category.');
 
   validateTransactionSchema_();
+  v2EnsureActualUsdSchema_();
   const sheet = getSheet_();
 
   const expected = {
     date, merchant, category, paymentMethod, amount, currency,
-    country, note, receiptUrl, receiptFileId
+    country, note, receiptUrl, receiptFileId, actualUsd
   };
 
   const preExisting = v2FindTransactionById_(sheet, entryId);
@@ -246,7 +257,7 @@ function v2LogExpense_(data) {
   }
 
   const fx = getUsdRate_(currency, date);
-  const usdAmount = roundMoney_(amount * fx.rate);
+  const usdAmount = actualUsd === '' ? roundMoney_(amount * fx.rate) : actualUsd;
   const lock = LockService.getScriptLock();
   lock.waitLock(30000);
   try {
@@ -265,7 +276,8 @@ function v2LogExpense_(data) {
       );
     }
 
-    sheet.getRange(sheet.getLastRow() + 1, 1, 1, 15).setValues([[
+    const rowNumber = sheet.getLastRow() + 1;
+    sheet.getRange(rowNumber, 1, 1, 16).setValues([[
       date,
       merchant,
       category,
@@ -273,15 +285,17 @@ function v2LogExpense_(data) {
       amount,
       currency,
       fx.rate,
-      usdAmount,
+      v2UsdFormula_(rowNumber),
       country,
       note,
       new Date().toISOString(),
       fx.source,
       entryId,
       receiptUrl,
-      receiptFileId
+      receiptFileId,
+      actualUsd
     ]]);
+    SpreadsheetApp.flush();
   } finally {
     lock.releaseLock();
   }
@@ -320,7 +334,10 @@ function v2DeleteExpense_(entryId, today, stayContext) {
 
     receiptFileId = String(found.row[14] || '').trim();
     result = deleteExpense(id, today, stayContext);
-    result.recent = v2ExtendRecentTransactions_(result.recent, 4);
+    result.recent = v2ExtendRecentTransactions_(result.recent, 4).map(tx => {
+      const found = v2FindTransactionById_(getSheet_(), tx.entryId);
+      return found ? v2TransactionView_(found.row) : tx;
+    });
   } finally {
     lock.releaseLock();
   }
@@ -471,7 +488,7 @@ function v2GetCalendarMonth_(monthValue) {
   const sheet = getSheet_();
   const lastRow = sheet.getLastRow();
   const rows = lastRow >= 2
-    ? sheet.getRange(2, 1, lastRow - 1, 15).getValues()
+    ? sheet.getRange(2, 1, lastRow - 1, 16).getValues()
     : [];
 
   const days = {};
@@ -513,6 +530,7 @@ function v2GetCalendarMonth_(monthValue) {
       usdAmount:roundMoney_(usdAmount),
       country:String(row[8] || ''),
       note:String(row[9] || ''),
+      actualUsd:row[15] === '' || row[15] == null ? '' : Number(row[15]),
       receiptUrl:String(row[13] || '')
     });
     monthTotalUsd += usdAmount;
@@ -557,4 +575,41 @@ function v2UploadReceipt_(data) {
   const bytes = Utilities.base64Decode(base64);
   const file = monthFolder.createFile(Utilities.newBlob(bytes, mimeType, fileName));
   return { ok:true, deduped:false, url:file.getUrl(), fileId:file.getId(), name:file.getName() };
+}
+
+// The first 15 columns stay compatible with the legacy app. P is editable;
+// every consumer continues reading the effective USD amount from column H.
+function v2ActualUsd_(value) {
+  if (value == null || String(value).trim() === '') return '';
+  const amount = Number(value);
+  if (!Number.isFinite(amount) || amount < 0) throw new Error('Invalid Actual USD.');
+  return roundMoney_(amount);
+}
+
+function v2UsdFormula_(row) {
+  return '=IF(ISNUMBER(P' + row + '),ROUND(P' + row + ',2),ROUND(E' + row + '*G' + row + ',2))';
+}
+
+function v2EnsureActualUsdSchema_() {
+  const sheet = getSheet_();
+  const header = String(sheet.getRange(1,16).getValue() || '').trim();
+  if (header === 'Actual USD') return;
+  if (header) throw new Error('Transactions column P is already in use.');
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    const current = String(sheet.getRange(1,16).getValue() || '').trim();
+    if (current === 'Actual USD') return;
+    if (current) throw new Error('Transactions column P is already in use.');
+    const lastRow = sheet.getLastRow();
+    if (lastRow >= 2) {
+      sheet.getRange(2,8,lastRow-1,1).setFormulas(
+        Array.from({length:lastRow-1}, (_,i) => [v2UsdFormula_(i+2)])
+      );
+    }
+    sheet.getRange(1,16).setValue('Actual USD').setNote('Optional final USD charge. Blank uses Local Amount × saved reference FX. Edit this column; USD Amount and all totals update automatically.');
+    sheet.getRange(2,16,sheet.getMaxRows()-1,1).setNumberFormat('$#,##0.00').setBackground('#e2f0d9');
+    sheet.setColumnWidth(16,120);
+    SpreadsheetApp.flush();
+  } finally { lock.releaseLock(); }
 }

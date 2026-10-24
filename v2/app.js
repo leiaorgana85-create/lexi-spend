@@ -133,7 +133,7 @@
 
   function hasFormDraft(kind) {
     const ids = kind === 'expense'
-      ? ['merchant', 'expenseAmount', 'expenseNote']
+      ? ['merchant', 'expenseAmount', 'expenseActualUsd', 'expenseNote']
       : ['cashAmount', 'atmFee', 'bankDebitUsd', 'cashNote'];
     return ids.some(id => String($(id)?.value || '').trim());
   }
@@ -367,7 +367,7 @@
     renderCash();
     setLedgerButtons(state.busy);
     setText('settingsBackendVersion', state.app.appVersion || '—');
-    setText('settingsFrontendVersion', 'v2.0.9');
+    setText('settingsFrontendVersion', 'v2.1.0');
     if (persist) saveJson(APP_STATE_CACHE_KEY, { savedAt:Date.now(), app:state.app });
   }
 
@@ -510,7 +510,13 @@
     const input = $('expenseAmount').value;
     const currency = $('expenseCurrency').value;
     const date = $('expenseDate').value;
-    const isCurrent = () => version === expensePreviewVersion && input === $('expenseAmount').value && currency === $('expenseCurrency').value && date === $('expenseDate').value;
+    const actualInput = $('expenseActualUsd').value.trim();
+    if (actualInput !== '') {
+      const actual = Number(actualInput);
+      setText('expenseUsdPreview', Number.isFinite(actual) && actual >= 0 ? `Actual ${money(actual)}` : 'Enter a valid Actual USD.');
+      return;
+    }
+    const isCurrent = () => version === expensePreviewVersion && actualInput === $('expenseActualUsd').value.trim() && input === $('expenseAmount').value && currency === $('expenseCurrency').value && date === $('expenseDate').value;
     const amount = Number(input || 0);
     if (!Number.isFinite(amount) || !amount || amount < 0) { setText('expenseUsdPreview', ''); return; }
     try {
@@ -625,16 +631,21 @@
     const rawAmount = $('expenseAmount').value.trim();
     const amount = Number(rawAmount);
     if (!rawAmount || !Number.isFinite(amount) || amount < 0) { setStatus('expenseStatus', 'Enter a valid amount.', true); return; }
+    const actualInput = $('expenseActualUsd').value.trim();
+    const actualUsd = actualInput === '' ? '' : Number(actualInput);
+    if (actualUsd !== '' && (!Number.isFinite(actualUsd) || actualUsd < 0)) { setStatus('expenseStatus', 'Enter a valid Actual USD.', true); return; }
+    if (actualUsd !== '' && !state.app?.supportsActualUsd) { setStatus('expenseStatus', 'Actual USD needs the backend update. Leave blank to use FX.', true); return; }
     if (!$('merchant').value.trim()) { setStatus('expenseStatus', 'Merchant is required.', true); return; }
     beginLedgerWrite();
     setStatus('expenseStatus', 'Saving…');
-    const submitted = { merchant:$('merchant').value, expenseAmount:$('expenseAmount').value, expenseNote:$('expenseNote').value };
+    const submitted = { merchant:$('merchant').value, expenseAmount:$('expenseAmount').value, expenseActualUsd:$('expenseActualUsd').value, expenseNote:$('expenseNote').value };
     const payload = {
       date:$('expenseDate').value,
       merchant:$('merchant').value.trim(),
       category:$('category').value,
       paymentMethod:$('paymentMethod').value,
       amount,
+      ...(actualUsd === '' ? {} : { actualUsd }),
       currency:$('expenseCurrency').value,
       country:state.app?.country || '',
       note:$('expenseNote').value.trim(),
@@ -654,6 +665,7 @@
         localAmount:amount,
         currency:payload.currency,
         usdAmount:Number(result.usdAmount || 0),
+        actualUsd,
         country:payload.country,
         note:payload.note,
         receiptUrl:''
@@ -1105,7 +1117,7 @@
     $('expenseForm').addEventListener('submit', saveExpense);
     $('cashForm').addEventListener('submit', saveCash);
     $('converterAmount').addEventListener('input', scheduleConverter);
-    ['expenseAmount','expenseCurrency','expenseDate'].forEach(id => $(id).addEventListener(id === 'expenseAmount' ? 'input' : 'change', scheduleExpensePreview));
+    ['expenseAmount','expenseActualUsd','expenseCurrency','expenseDate'].forEach(id => $(id).addEventListener(['expenseAmount','expenseActualUsd'].includes(id) ? 'input' : 'change', scheduleExpensePreview));
     $('expenseCurrency').addEventListener('change', () => {
       try { localStorage.setItem(EXPENSE_CURRENCY_KEY, $('expenseCurrency').value); } catch (_) {}
       scheduleConverter();
