@@ -41,7 +41,7 @@ function harness({ realApi=false, savedPending=null, savedCurrency=null, savedCa
   if(realApi){w.eval(source('v2/api.js'));w.SpendApi={...w.SpendApi,warmRate:()=>{}};}
   const code=source('v2/app.js').replace('  init();',`  window.audit={state,init,bind,renderApp,configureControls,loadAppState,loadCalendarMonth,
     beginLedgerWrite,finishLedgerWrite,saveExpense,deleteExpense,saveCash,deleteCash,flushOutbox,readOutbox,
-    applyCalendarExpenseSave,applyCalendarExpenseDelete,refreshLocalDates,localIsoDate,saveCalendarCache,
+    applyCalendarExpenseSave,applyCalendarExpenseDelete,refreshLocalDates,localIsoDate,saveCalendarCache,refreshVisibleData,restoreCachedAppState,
     updateConverter,updateExpensePreview,updateCashPreview,scheduleConverter,scheduleExpensePreview,scheduleCashPreview};`);
   assert.notEqual(code,source('v2/app.js'),'test entrypoint marker');w.eval(code.replace('function writeOutbox(value) {', 'function writeOutbox(value) { if(window.auditStorageFull)throw Error("Storage full");'));
   const a=w.audit,$=id=>w.document.getElementById(id);
@@ -471,6 +471,91 @@ await check('Actual USD draft survives background reads and edits during save',a
   const pending=a.saveExpense({preventDefault(){}});$('expenseActualUsd').value='2.60';
   resolveSave({usdAmount:2.5,recent:[],summary:h.f.summary});await pending;
   assert.equal($('expenseActualUsd').value,'2.60');
+});
+await check('refresh failures survive cached rerenders; full-read timestamps never advance on local cash changes',async()=>{
+  const h=harness();await h.a.loadAppState(false);const confirmed=h.a.state.lastConfirmedAt;
+  assert.ok(confirmed);h.setNow('2030-01-15T12:02:00Z');
+  h.setHandler(async()=>{throw Error('Backend unavailable');});await h.a.loadAppState(false);
+  h.a.renderApp({persist:true});assert.equal(h.$('connectionBadge').textContent,'Sync error');
+  assert.equal(h.a.state.lastConfirmedAt,confirmed);
+  assert.equal(JSON.parse(h.w.localStorage.getItem('lexiSpendV2AppState')).confirmedAt,confirmed);
+  h.setHandler(async()=>clone(h.f));await h.a.loadAppState(false);
+  assert.equal(h.$('connectionBadge').textContent,'Connected');assert.ok(h.a.state.lastConfirmedAt>confirmed);
+  const fresh=h.a.state.lastConfirmedAt;h.setNow('2030-01-15T12:03:00Z');
+  h.$('cashAmount').value='100';h.setHandler(async()=>({withdrawal:{date:'2030-01-15',amount:100,currency:'THB',entryId:'validcash1'}}));
+  await h.a.saveCash({preventDefault(){}});
+  assert.equal(JSON.parse(h.w.localStorage.getItem('lexiSpendV2AppState')).confirmedAt,fresh);
+  const legacy=harness();legacy.w.localStorage.setItem('lexiSpendV2AppState',JSON.stringify({savedAt:123,app:legacy.f}));
+  legacy.a.restoreCachedAppState();assert.equal(legacy.a.state.lastConfirmedAt,0);
+  h.setHandler(async()=>{throw Error('NOT_CONNECTED');});await h.a.loadAppState(false);h.a.renderApp();
+  assert.equal(h.$('connectionBadge').textContent,'Not connected');
+});
+await check('visible same-day polling refreshes external edits, coalesces requests and preserves drafts',async()=>{
+  const h=harness();h.a.bind();await h.a.loadAppState(false);h.calls.length=0;
+  h.$('merchant').value='Unsent draft';h.$('expenseAmount').value='19';
+  await h.a.refreshVisibleData();assert.equal(h.calls.length,0);
+  h.setNow('2030-01-15T12:01:00Z');let finish;
+  h.setHandler(name=>name==='getAppState'?new Promise(resolve=>finish=resolve):Promise.resolve(emptyMonth()));
+  for(const fn of h.intervals)fn();await turn();
+  await h.a.refreshVisibleData(true);assert.equal(h.calls.filter(x=>x[0]==='getAppState').length,1);
+  const changed=clone(h.f);changed.summary.budgetTotal=12;finish(changed);await turn();
+  assert.equal(h.a.state.app.summary.budgetTotal,12);assert.equal(h.$('merchant').value,'Unsent draft');
+  assert.equal(h.$('expenseAmount').value,'19');
+  h.a.state.busy=true;h.setNow('2030-01-15T12:02:00Z');await h.a.refreshVisibleData(true);
+  assert.equal(h.calls.filter(x=>x[0]==='getAppState').length,1);h.a.state.busy=false;
+  h.setHandler(async name=>name==='getAppState'?clone(changed):emptyMonth());h.a.state.activeView='calendar';
+  await h.a.refreshVisibleData(true);await turn();assert.ok(h.calls.some(x=>x[0]==='getCalendarMonth'));
+  Object.defineProperty(h.w.document,'visibilityState',{configurable:true,value:'hidden'});
+  const before=h.calls.length;await h.a.refreshVisibleData(true);assert.equal(h.calls.length,before);
+});
+await check('invalid queued actions are retained for review while valid purchases sync exactly once',async()=>{
+  const bad={name:'deleteCashWithdrawal',params:[''],token:'keep-invalid'};
+  const good={name:'logExpense',params:[{entryId:'good0001',date:'2030-01-15',amount:10}],token:'keep-good'};
+  const h=harness({savedOutbox:JSON.stringify({'deleteCashWithdrawal:':bad,'logExpense:good0001':good})});
+  h.setHandler(async name=>name==='getAppState'?clone(h.f):{deduped:true});await h.a.flushOutbox();
+  const remaining=h.a.readOutbox();assert.equal(Object.keys(remaining).length,1);
+  assert.equal(remaining['deleteCashWithdrawal:'].blocked,true);
+  assert.deepEqual(clone(remaining['deleteCashWithdrawal:'].params),bad.params);
+  assert.equal(h.calls.filter(x=>x[0]==='deleteCashWithdrawal').length,0);
+  assert.equal(h.calls.filter(x=>x[0]==='logExpense').length,1);
+  await h.a.flushOutbox();assert.equal(h.calls.filter(x=>x[0]==='logExpense').length,1);
+  assert.match(h.$('pendingDetails').textContent,/need review/);
+});
+await check('server row errors do not block independent entries; manual retry retains the exact original payload',async()=>{
+  const entries=Object.fromEntries([1,2].map(i=>[`logExpense:row0000${i}`,{name:'logExpense',params:[{entryId:`row0000${i}`,date:'2030-01-15',amount:i}],token:`t${i}`} ]));
+  const h=harness({savedOutbox:JSON.stringify(entries)});h.a.bind();
+  h.setHandler(async(name,args)=>{if(name==='getAppState')return clone(h.f);if(args[0].entryId==='row00001')throw Error('Invalid category.');return {deduped:true};});
+  await h.a.flushOutbox();assert.equal(h.a.readOutbox()['logExpense:row00001'].blocked,true);
+  assert.ok(!h.a.readOutbox()['logExpense:row00002']);const firstCalls=h.calls.length;
+  await h.a.flushOutbox();assert.equal(h.calls.length,firstCalls);
+  h.setHandler(async name=>name==='getAppState'?clone(h.f):{deduped:true});
+  h.$('retryPendingButton').click();await turn();await turn();assert.equal(Object.keys(h.a.readOutbox()).length,0);
+  const writes=h.calls.filter(x=>x[0]==='logExpense'&&x[1][0].entryId==='row00001');
+  assert.equal(writes.length,2);assert.deepEqual(writes[0][1],writes[1][1]);
+});
+await check('withdrawals without an ID cannot enqueue a deletion or regain an enabled delete control',async()=>{
+  const h=harness();h.a.state.app.cashWallets.THB.monthWithdrawals=[{date:'2030-01-15',amount:3000,currency:'THB',entryId:''}];
+  h.a.renderApp();assert.equal(h.$('recentWithdrawals').querySelector('button').disabled,true);
+  await h.a.deleteCash({amount:3000,currency:'THB',entryId:''});
+  assert.equal(h.calls.length,0);assert.equal(Object.keys(h.a.readOutbox()).length,0);
+  assert.match(h.$('cashStatus').textContent,/no ID/);
+});
+await check('sync timing diagnostics retain durations and fixed operation names without private fields',async()=>{
+  const h=harness({realApi:true});h.w.eval(source('v2/lifecycle-diagnostics.js'));
+  h.w.localStorage.setItem('lexiSpendPrivateApiCodeV1','fixture-secret');
+  const messages=[],target={postMessage:m=>messages.push(m)};
+  const reply=data=>h.w.dispatchEvent(new h.w.MessageEvent('message',{origin:'https://script.googleusercontent.com',source:target,data}));
+  reply({type:'lexi-spend-bridge-ready'});
+  const pending=h.w.SpendApi.call('getAppState',['2030-01-15','THB']);await turn();
+  h.setNow('2030-01-15T12:00:02Z');reply({type:'lexi-spend-result',id:messages[0].id,ok:true,result:clone(h.f)});await pending;
+  const failure=h.w.SpendApi.call('logExpense',[{merchant:'private merchant',amount:99}]);await turn();
+  reply({type:'lexi-spend-result',id:messages[1].id,ok:false,error:'private server text'});await assert.rejects(failure);
+  h.w.LexiLifecycle.sync('confirmed',{operation:'logExpense',durationMs:3000,apiCode:'secret',merchant:'private merchant'});
+  h.w.LexiLifecycle.sync('ack',{operation:'private operation',durationMs:2});
+  const snapshot=h.w.LexiLifecycle.snapshot();const events=snapshot.events.filter(x=>x.event.startsWith('sync-'));
+  assert.deepEqual(clone(events.map(x=>x.event)),['sync-ack','sync-error','sync-confirmed']);
+  assert.equal(events[0].durationMs,2000);assert.equal(events[2].durationMs,3000);
+  assert.doesNotMatch(JSON.stringify(snapshot),/fixture-secret|private merchant|private server text|private operation|apiCode/);
 });
 console.log(`${passed} regression groups passed. DOM/API responses are simulated; no live ledger writes.`);
 } finally {for(const w of windows)await w.happyDOM.close();}
