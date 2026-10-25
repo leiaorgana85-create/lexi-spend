@@ -112,6 +112,30 @@ await check('pending errors stay visible with working Retry sync and clear after
   h.setHandler(async name=>name==='getAppState'?clone(h.f):{alreadyDeleted:true});h.$('retryPendingButton').click();await turn();await turn();
   assert.equal(Object.keys(h.a.readOutbox()).length,0);assert.equal(h.$('connectionBadge').textContent,'Connected');
 });
+await check('three pending purchases keep a compact shared error, three recent rows and intact retry identities',async()=>{
+  const outbox=Object.fromEntries([1,2,3].map(i=>[`logExpense:queue00${i}`,{
+    name:'logExpense',params:[{entryId:`queue00${i}`,date:'2030-01-15',merchant:`Fixture ${i}`,
+      category:'Category A',amount:i*10,currency:'THB',paymentMethod:'Cash'}],
+    token:`token${i}`,error:'ReferenceError: getBudgetConfig_ is not defined'
+  }]));
+  const h=harness({savedOutbox:JSON.stringify(outbox)});
+  h.a.state.app.recent=[{entryId:'confirmed',merchant:'Confirmed',date:'2030-01-14',currency:'THB',localAmount:5}];
+  h.a.renderApp();h.setHandler(async()=>{throw Error('ReferenceError: getBudgetConfig_ is not defined');});
+  await h.a.flushOutbox();
+  assert.equal(h.$('recentTransactions').children.length,3);
+  const detail=h.$('pendingDetails').textContent;
+  assert.equal(detail.match(/getBudgetConfig_/g).length,1);
+  assert.ok(detail.length<160);assert.equal(h.$('pendingChanges').className,'pending-changes');
+  assert.deepEqual(clone(h.a.readOutbox()),outbox);
+  const sent=[];h.setHandler(async(name,args)=>{
+    if(name==='getAppState')return clone(h.f);
+    sent.push(args[0].entryId);return {deduped:true};
+  });
+  h.$('retryPendingButton').click();await turn();await turn();
+  assert.deepEqual(sent,['queue001','queue002','queue003']);
+  assert.equal(Object.keys(h.a.readOutbox()).length,0);
+  assert.equal(h.$('pendingChanges').hidden,true);
+});
 await check('canonical Calendar refresh, request coalescing and no cache freshness renewal',async()=>{
   const h=harness({realApi:true}),{w,a}=h,key='lexiSpendV2Calendar:2030-01';
   w.localStorage.setItem('lexiSpendPrivateApiCodeV1','fixture-code');

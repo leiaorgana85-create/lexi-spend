@@ -198,3 +198,9 @@
 .v1-actual-usd-field #expenseActualUsd { width:100%; box-sizing:border-box; height:40px; min-height:40px; padding:4px 8px; font-size:17px; font-weight:800; }
 .v1-actual-usd-field label { display:flex; align-items:baseline; gap:4px; }
 .v1-actual-usd-field .v1-optional { display:inline; font-size:10px; font-weight:400; opacity:.65; }
+
+/* This status sits after the recent list, outside .v1-recent-list. */
+.pending-changes { display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin-top:10px; color:var(--muted); font-size:12px; line-height:1.4; overflow-wrap:anywhere; }
+.pending-changes[hidden] { display:none; }
+.pending-changes > span { flex:1 1 190px; min-width:0; }
+.pending-changes > button { flex:0 0 auto; }

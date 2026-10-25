@@ -205,6 +205,24 @@ function v2TransactionReturn_(entryId, usdAmount, fxRate, fxEffectiveDate, today
   };
 }
 
+// V2 must also work with the existing legacy Code.gs deployment, which may
+// predate getBudgetConfig_. Read the same Setup cells without redefining legacy
+// globals or replacing the user's base script.
+function v2BudgetConfig_() {
+  if (typeof getBudgetConfig_ === 'function') return getBudgetConfig_();
+
+  const sheet = getSpreadsheet_().getSheetByName('Setup');
+  if (!sheet) throw new Error('Setup sheet not found.');
+  const categories = sheet.getRange('D2:F20').getValues()
+    .map(row => ({
+      name: String(row[0] || '').trim(),
+      treatment: String(row[2] || '').trim().toLowerCase()
+    }))
+    .filter(row => row.name && (row.treatment === 'budgeted' || row.treatment === 'no limit'));
+  if (!categories.length) throw new Error('Setup app categories are missing.');
+  return { categories };
+}
+
 function v2LogExpense_(data) {
   if (!data) throw new Error('Missing expense data.');
 
@@ -229,7 +247,7 @@ function v2LogExpense_(data) {
   if (!currency) throw new Error('Currency is required.');
   if (!['Cash','Card'].includes(paymentMethod)) throw new Error('Payment method must be Cash or Card.');
 
-  const allowedCategory = getBudgetConfig_().categories.some(x => x.name === category);
+  const allowedCategory = v2BudgetConfig_().categories.some(x => x.name === category);
   if (!allowedCategory) throw new Error('Invalid category.');
 
   validateTransactionSchema_();
