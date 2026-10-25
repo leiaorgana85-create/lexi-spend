@@ -218,15 +218,7 @@
   }
 
   async function callBackend(functionName, parameters = [], options = {}) {
-    const started = Date.now();
-    try {
-      const result = await performBackendCall(functionName, parameters, options);
-      window.LexiLifecycle?.sync?.('ack', { operation:functionName, durationMs:Date.now() - started });
-      return result;
-    } catch (error) {
-      window.LexiLifecycle?.sync?.('error', { operation:functionName, durationMs:Date.now() - started });
-      throw error;
-    }
+    return performBackendCall(functionName, parameters, options);
   }
 
   async function performBackendCall(functionName, parameters = [], options = {}) {

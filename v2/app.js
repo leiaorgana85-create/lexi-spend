@@ -695,7 +695,6 @@
       const result = await SpendApi.call(name, params, { timeoutMs:25000 });
       const latest = readOutbox();
       if (latest[id]?.token === entry.token) { delete latest[id]; writeOutbox(latest); }
-      window.LexiLifecycle?.sync?.('confirmed', { operation:name, durationMs:Date.now() - entry.queuedAt });
       renderOutboxStatus();
       return result;
     } catch (error) {
@@ -748,7 +747,6 @@
             acknowledged = true;
             const latest = readOutbox();
             if (latest[id]?.token === entry.token) { delete latest[id]; writeOutbox(latest); }
-            window.LexiLifecycle?.sync?.('confirmed', { operation:entry.name, ...(entry.queuedAt ? { durationMs:Date.now() - entry.queuedAt } : {}) });
             const month = entry.affectedDate?.slice(0,7) || entry.params[0]?.date?.slice(0,7);
             if (month) changedMonths.add(month);
             renderOutboxStatus();
@@ -1357,13 +1355,8 @@
       if (!(await SpendApi.hasCode()) || state.syncing) return;
       if (state.busy) { state.syncQueued = true; return; }
       if (hadPending) return;
-      window.LexiLifecycle?.mark('data-refresh-start');
-      try {
-        const refreshed = await loadAppState(false);
-        if (refreshed && state.activeView === 'calendar') void loadCalendarMonth(monthKey(state.calendarCursor), true);
-      } finally {
-        window.LexiLifecycle?.mark('data-refresh-end');
-      }
+      const refreshed = await loadAppState(false);
+      if (refreshed && state.activeView === 'calendar') void loadCalendarMonth(monthKey(state.calendarCursor), true);
     });
     setInterval(() => {
       if (document.visibilityState === 'visible') {
@@ -1383,6 +1376,7 @@
   }
 
   async function init() {
+    try { localStorage.removeItem('lexiLifecycleV1:Lexi Spend'); } catch (_) {}
     bind();
     // Update checks must not wait behind slow Google Apps Script requests.
     if ('serviceWorker' in navigator) {

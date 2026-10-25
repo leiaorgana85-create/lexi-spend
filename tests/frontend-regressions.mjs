@@ -540,22 +540,13 @@ await check('withdrawals without an ID cannot enqueue a deletion or regain an en
   assert.equal(h.calls.length,0);assert.equal(Object.keys(h.a.readOutbox()).length,0);
   assert.match(h.$('cashStatus').textContent,/no ID/);
 });
-await check('sync timing diagnostics retain durations and fixed operation names without private fields',async()=>{
-  const h=harness({realApi:true});h.w.eval(source('v2/lifecycle-diagnostics.js'));
-  h.w.localStorage.setItem('lexiSpendPrivateApiCodeV1','fixture-secret');
-  const messages=[],target={postMessage:m=>messages.push(m)};
-  const reply=data=>h.w.dispatchEvent(new h.w.MessageEvent('message',{origin:'https://script.googleusercontent.com',source:target,data}));
-  reply({type:'lexi-spend-bridge-ready'});
-  const pending=h.w.SpendApi.call('getAppState',['2030-01-15','THB']);await turn();
-  h.setNow('2030-01-15T12:00:02Z');reply({type:'lexi-spend-result',id:messages[0].id,ok:true,result:clone(h.f)});await pending;
-  const failure=h.w.SpendApi.call('logExpense',[{merchant:'private merchant',amount:99}]);await turn();
-  reply({type:'lexi-spend-result',id:messages[1].id,ok:false,error:'private server text'});await assert.rejects(failure);
-  h.w.LexiLifecycle.sync('confirmed',{operation:'logExpense',durationMs:3000,apiCode:'secret',merchant:'private merchant'});
-  h.w.LexiLifecycle.sync('ack',{operation:'private operation',durationMs:2});
-  const snapshot=h.w.LexiLifecycle.snapshot();const events=snapshot.events.filter(x=>x.event.startsWith('sync-'));
-  assert.deepEqual(clone(events.map(x=>x.event)),['sync-ack','sync-error','sync-confirmed']);
-  assert.equal(events[0].durationMs,2000);assert.equal(events[2].durationMs,3000);
-  assert.doesNotMatch(JSON.stringify(snapshot),/fixture-secret|private merchant|private server text|private operation|apiCode/);
+await check('diagnostics stay removed without changing the pending outbox',async()=>{
+  assert(!source('v2/index.html').includes('lifecycle-diagnostics.js'));
+  assert(!source('v2/sw.js').includes('lifecycle-diagnostics.js'));
+  const pending={ 'logExpense:pending001':{name:'logExpense',params:[{entryId:'pending001',amount:10}],token:'same-token'} };
+  const h=harness({savedOutbox:JSON.stringify(pending)});
+  assert.equal(h.w.document.querySelector('[aria-label="App diagnostics"]'),null);
+  assert.deepEqual(clone(h.a.readOutbox()),pending);
 });
 console.log(`${passed} regression groups passed. DOM/API responses are simulated; no live ledger writes.`);
 } finally {for(const w of windows)await w.happyDOM.close();}
