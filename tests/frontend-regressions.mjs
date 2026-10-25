@@ -403,10 +403,11 @@ await check('JPY is absent from both currency menus and legacy preferences safel
   assert.equal(a.state.cashCurrency,'THB');assert.equal($('cashCurrency').value,'THB');assert.equal(a.state.app.cashWallets.JPY.balance,1000);
 });
 await check('service worker keeps sibling caches and uses only its current offline shell',async()=>{
-  const handlers={},deleted=[],matches=[];let fetches=0;const own={match:async key=>{matches.push(key);return {own:true};}};
-  const context={URL,fetch:()=>{fetches++;return new Promise(()=>{});},caches:{keys:async()=>['lexi-spend2-shell-v31','lexi-spend2-shell-v32','lexi-spend2-shell-v33','lexi-spend2-shell-v34','lexi-spend2-shell-v35','lexi-spend2-shell-v36','lexi-spend2-shell-v37','lexi-spend2-shell-v38','lexi-spend2-shell-v39','lexi-spend-v2-old','sibling-shell'],delete:async k=>deleted.push(k),open:async()=>own,match(){throw new Error('origin-wide lookup');}},
-    self:{location:{origin:'https://example.test'},addEventListener:(t,f)=>handlers[t]=f,skipWaiting(){},clients:{claim:async()=>{}}}};
+  const handlers={},deleted=[],matches=[],installed=[];let fetches=0;const own={match:async key=>{matches.push(key);return {own:true};},addAll:async requests=>installed.push(...requests)};
+  const context={URL,Request,fetch:()=>{fetches++;return new Promise(()=>{});},caches:{keys:async()=>['lexi-spend2-shell-v31','lexi-spend2-shell-v32','lexi-spend2-shell-v33','lexi-spend2-shell-v34','lexi-spend2-shell-v35','lexi-spend2-shell-v36','lexi-spend2-shell-v37','lexi-spend2-shell-v38','lexi-spend2-shell-v39','lexi-spend-v2-old','sibling-shell'],delete:async k=>deleted.push(k),open:async()=>own,match(){throw new Error('origin-wide lookup');}},
+    self:{location:{origin:'https://example.test',href:'https://example.test/lexi-spend/v2/sw.js'},addEventListener:(t,f)=>handlers[t]=f,skipWaiting(){},clients:{claim:async()=>{}}}};
   vm.runInNewContext(source('v2/sw.js'),context);let work;
+  handlers.install({waitUntil:p=>work=p});await work;assert(installed.length>5);assert(installed.every(request=>request.cache==='reload'));
   handlers.activate({waitUntil:p=>work=p});await work;
   assert.deepEqual(deleted.sort(),['lexi-spend-v2-old','lexi-spend2-shell-v31','lexi-spend2-shell-v32','lexi-spend2-shell-v33','lexi-spend2-shell-v34','lexi-spend2-shell-v35','lexi-spend2-shell-v36','lexi-spend2-shell-v37','lexi-spend2-shell-v38','lexi-spend2-shell-v39']);
   const request={url:'https://example.test/lexi-spend/v2/app.js',method:'GET'};
