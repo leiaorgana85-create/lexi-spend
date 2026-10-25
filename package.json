@@ -1,0 +1,12 @@
+{
+  "name": "lexi-spend-release-checks",
+  "private": true,
+  "scripts": {
+    "test": "node tests/backend-contract.cjs && node tests/actual-usd-backend.cjs && node tests/frontend-regressions.mjs"
+  },
+  "devDependencies": {
+    "acorn": "8.15.0",
+    "eslint-scope": "8.4.0",
+    "happy-dom": "21.0.4"
+  }
+}
