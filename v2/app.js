@@ -198,7 +198,7 @@
       return;
     }
 
-    rows.slice(0, 4).forEach(tx => {
+    rows.slice(0, 3).forEach(tx => {
       const row = document.createElement('article');
       row.className = 'txnCompact';
 
@@ -211,7 +211,7 @@
 
       const meta = document.createElement('div');
       meta.className = 'txnCompactMeta';
-      meta.textContent = [tx.date, tx.paymentMethod, tx._pending ? 'Saved on device · sync pending' : ''].filter(Boolean).join(' · ');
+      meta.textContent = [tx.date, tx.paymentMethod, tx._pending ? 'Pending sync' : ''].filter(Boolean).join(' · ');
       main.append(title, meta);
 
       const amount = document.createElement('div');
@@ -378,7 +378,7 @@
     renderCash();
     setLedgerButtons(state.busy);
     setText('settingsBackendVersion', state.app.appVersion || '—');
-    setText('settingsFrontendVersion', 'v2.2.1');
+    setText('settingsFrontendVersion', 'v2.2.2');
     renderOutboxStatus();
     if (persist) saveJson(APP_STATE_CACHE_KEY, { savedAt:Date.now(), app:state.app });
   }
@@ -641,7 +641,7 @@
     let host = $('pendingChanges');
     if (!host && entries.length) {
       host = document.createElement('div'); host.id = 'pendingChanges';
-      host.className = 'txnCompactMeta';
+      host.className = 'pending-changes';
       const detail = document.createElement('span'); detail.id = 'pendingDetails'; detail.setAttribute('role', 'status');
       const retry = document.createElement('button'); retry.type = 'button'; retry.id = 'retryPendingButton';
       retry.className = 'ghost-button'; retry.textContent = 'Retry sync';
@@ -653,13 +653,12 @@
       host.hidden = !entries.length;
       const retry = $('retryPendingButton');
       if (retry) { retry.disabled = state.flushing || navigator.onLine === false; retry.textContent = state.flushing ? 'Syncing…' : 'Retry sync'; }
-      $('pendingDetails').textContent = entries.map(x => {
-        const p = x.params[0];
-        const label = x.name === 'logExpense' ? `${p.merchant} · ${p.amount} ${p.currency}`
-          : x.name === 'addCashWithdrawal' ? `Withdrawal · ${p.amount} ${p.currency}`
-          : x.name === 'deleteExpense' ? 'Expense deletion' : 'Withdrawal deletion';
-        return `${label} · waiting to sync${x.error ? ' · ' + x.error : ''}`;
-      }).join(' | ') + (entries.length ? ' · Totals update after Google Sheet confirms.' : '');
+      const errors = [...new Set(entries.map(x => x.error).filter(Boolean))];
+      // List each purchase only in Recent Spend. Show one shared sync error,
+      // rather than repeating the same stack message for every queued row.
+      const error = errors.length ? ` ${String(errors[0]).slice(0, 160)}` : '';
+      $('pendingDetails').textContent = count
+        ? `${count} saved on device. Totals update after sync.${error}` : '';
     }
   }
 

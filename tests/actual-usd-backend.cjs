@@ -33,3 +33,30 @@ assert.equal(month.days['2026-10-24'].transactions[1].actualUsd,2.8);
 assert.equal(context.v2TransactionReturn_('actual01',2.8,.03,'2026-10-24','2026-10-24','Card','THB',false).summary.weeklyTotal,5.8);
 assert.equal(context.v2UsdFormula_(8),'=IF(ISNUMBER(P8),ROUND(P8,2),ROUND(E8*G8,2))');
 console.log('PASS Actual USD backend: schema, blank/override/zero, durable rows, retry identity, validation, Calendar and summary totals (simulated Sheets).');
+
+// Legacy Code.gs is still deployed for some users: the newer budget helper is
+// absent. Exercise the real write path in that environment, not a stub of it.
+const modernBudgetHelper=context.getBudgetConfig_;
+delete context.getBudgetConfig_;
+let setupReads=0;
+context.getSpreadsheet_=()=>({getSheetByName(name){
+ assert.equal(name,'Setup');return {getRange(range){
+   assert.equal(range,'D2:F20');return {getValues(){setupReads++;return [
+     ['Food',800,'budgeted'],['Shopping & Others',400,'budgeted'],
+     ['GLP-1','','no limit'],['Housing',0,'excluded'],['',0,'budgeted']
+   ];}};
+ }};
+}});
+const legacyPayload=payload('legacy01','');
+assert.equal(context.v2LogExpense_(legacyPayload).usdAmount,3);
+assert.equal(context.v2LogExpense_(legacyPayload).deduped,true);
+assert.equal(rows.filter(row=>row[12]==='legacy01').length,1);
+assert.ok(setupReads>=2);
+assert.throws(()=>context.v2LogExpense_({...payload('invalid01',''),category:'Housing'}),/Invalid category/);
+assert.equal(rows.length,4);
+context.getSpreadsheet_=()=>({getSheetByName:()=>null});
+assert.throws(()=>context.v2LogExpense_(payload('missing01','')),/Setup sheet not found/);
+assert.equal(rows.length,4);
+context.getBudgetConfig_=modernBudgetHelper;
+assert.equal(context.v2BudgetConfig_().categories[0].name,'Food');
+console.log('PASS legacy backend: absent budget helper, Setup categories, real write, retry deduplication and rejected invalid/missing setup without data loss.');
