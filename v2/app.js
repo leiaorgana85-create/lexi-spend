@@ -29,6 +29,7 @@
     manualDates: {},
     localDay: localIsoDate(),
     syncing: false,
+    flushing: false,
     hiddenAt: 0
   };
 
@@ -131,6 +132,7 @@
     fillSelect($('cashCurrency'), CURRENCIES, state.cashCurrency || defaultCurrency);
     const categorySelect = $('category');
     fillSelect(categorySelect, categories().map(item => item.name), categorySelect.value);
+    SpendApi.warmRate?.($('expenseCurrency').value, localIsoDate());
   }
 
   function hasFormDraft(kind) {
@@ -376,7 +378,7 @@
     renderCash();
     setLedgerButtons(state.busy);
     setText('settingsBackendVersion', state.app.appVersion || '—');
-    setText('settingsFrontendVersion', 'v2.2.0');
+    setText('settingsFrontendVersion', 'v2.2.1');
     renderOutboxStatus();
     if (persist) saveJson(APP_STATE_CACHE_KEY, { savedAt:Date.now(), app:state.app });
   }
@@ -418,7 +420,7 @@
 
   async function loadAppState(showError = true) {
     if (navigator.onLine === false) { renderOutboxStatus(); return false; }
-    if (state.busy) { state.syncQueued = true; return false; }
+    if (state.busy || state.flushing) { state.syncQueued = true; return false; }
     if (state.syncing) return false;
     state.syncQueued = false;
     state.syncing = true;
@@ -436,7 +438,7 @@
             [requestDay, state.cashCurrency || ''],
             { timeoutMs:20000 }
           );
-          if (requestVersion !== state.ledgerVersion || state.busy || requestDay !== localIsoDate()) {
+          if (requestVersion !== state.ledgerVersion || state.busy || state.flushing || requestDay !== localIsoDate()) {
             state.syncQueued = true;
             return false;
           }
@@ -467,7 +469,7 @@
       return false;
     } finally {
       state.syncing = false;
-      if (state.syncQueued && !state.busy) void loadAppState(false);
+      if (state.syncQueued && !state.busy && !state.flushing) void loadAppState(false);
     }
   }
 
@@ -490,7 +492,7 @@
   function scheduleConverter() {
     converterVersion++;
     clearTimeout(converterTimer);
-    converterTimer = setTimeout(updateConverter, 280);
+    converterTimer = setTimeout(updateConverter, 40);
   }
   async function updateConverter() {
     const version = ++converterVersion;
@@ -633,24 +635,31 @@
   function renderOutboxStatus() {
     const entries = Object.values(readOutbox());
     const count = entries.length;
-    const text = count ? `${navigator.onLine === false ? 'Offline · ' : ''}${count} pending · totals exclude pending`
-      : navigator.onLine === false ? 'Offline · saved data' : '';
+    const text = count ? `${navigator.onLine === false ? 'Offline · ' : state.flushing ? 'Syncing · ' : ''}${count} pending`
+      : navigator.onLine === false ? 'Offline · saved data' : state.app ? 'Connected' : '';
     if (text) { setConnection(text); setText('settingsConnection', text); }
     let host = $('pendingChanges');
     if (!host && entries.length) {
       host = document.createElement('div'); host.id = 'pendingChanges';
-      host.className = 'txnCompactMeta'; host.setAttribute('role', 'status');
+      host.className = 'txnCompactMeta';
+      const detail = document.createElement('span'); detail.id = 'pendingDetails'; detail.setAttribute('role', 'status');
+      const retry = document.createElement('button'); retry.type = 'button'; retry.id = 'retryPendingButton';
+      retry.className = 'ghost-button'; retry.textContent = 'Retry sync';
+      retry.addEventListener('click', () => { void flushOutbox(); });
+      host.append(detail, retry);
       $('recentTransactions')?.after(host);
     }
     if (host) {
       host.hidden = !entries.length;
-      host.textContent = entries.map(x => {
+      const retry = $('retryPendingButton');
+      if (retry) { retry.disabled = state.flushing || navigator.onLine === false; retry.textContent = state.flushing ? 'Syncing…' : 'Retry sync'; }
+      $('pendingDetails').textContent = entries.map(x => {
         const p = x.params[0];
         const label = x.name === 'logExpense' ? `${p.merchant} · ${p.amount} ${p.currency}`
           : x.name === 'addCashWithdrawal' ? `Withdrawal · ${p.amount} ${p.currency}`
           : x.name === 'deleteExpense' ? 'Expense deletion' : 'Withdrawal deletion';
         return `${label} · waiting to sync${x.error ? ' · ' + x.error : ''}`;
-      }).join(' | ');
+      }).join(' | ') + (entries.length ? ' · Totals update after Google Sheet confirms.' : '');
     }
   }
 
@@ -660,9 +669,9 @@
     all[id] = { name, params, affectedDate:affectedDate || params[0]?.date || '', token:uuid() };
     writeOutbox(all);
     const entry = all[id];
-    if (navigator.onLine === false) { renderOutboxStatus(); return { queued:true }; }
+    if (navigator.onLine === false || state.flushing) { renderOutboxStatus(); return { queued:true }; }
     try {
-      const result = await retryWrite(name, params);
+      const result = await SpendApi.call(name, params, { timeoutMs:25000 });
       const latest = readOutbox();
       if (latest[id]?.token === entry.token) { delete latest[id]; writeOutbox(latest); }
       renderOutboxStatus();
@@ -674,6 +683,8 @@
       }
       renderOutboxStatus();
       // The complete submitted row is durable even after an ambiguous response.
+      if (/timed out|network|connect/i.test(String(error?.message || ''))) SpendApi.resetBridge();
+      setTimeout(() => { void flushOutbox(); }, 1000);
       return { queued:true };
     }
   }
@@ -681,32 +692,51 @@
   function flushOutbox() {
     if (outboxFlight || state.busy || navigator.onLine === false || document.visibilityState === 'hidden') return outboxFlight || Promise.resolve();
     if (!Object.keys(readOutbox()).length) return Promise.resolve();
+    const changedMonths = new Set();
+    let acknowledged = false;
     outboxFlight = (async () => {
       if (!await SpendApi.hasCode() || state.busy) return;
-      const changedMonths = new Set(Object.values(readOutbox()).map(x => x.affectedDate?.slice(0,7) || x.params[0]?.date?.slice(0,7)).filter(Boolean));
-      beginLedgerWrite();
+      state.flushing = true;
+      state.ledgerVersion++;
+      renderOutboxStatus();
       try {
         for (const [id, entry] of Object.entries(readOutbox())) {
           if (navigator.onLine === false) break;
           if (readOutbox()[id]?.token !== entry.token) continue;
           try {
-            await retryWrite(entry.name, entry.params);
+            await SpendApi.call(entry.name, entry.params, { timeoutMs:25000 });
+            acknowledged = true;
             const latest = readOutbox();
             if (latest[id]?.token === entry.token) { delete latest[id]; writeOutbox(latest); }
+            const month = entry.affectedDate?.slice(0,7) || entry.params[0]?.date?.slice(0,7);
+            if (month) changedMonths.add(month);
+            renderOutboxStatus();
           } catch (error) {
             const latest = readOutbox();
             if (latest[id]?.token === entry.token) {
               latest[id].error = String(error?.message || 'Connection unavailable'); writeOutbox(latest);
             }
+            if (String(error?.message) === 'NOT_CONNECTED') openConnectDialog();
+            if (/timed out|network|connect/i.test(String(error?.message || ''))) SpendApi.resetBridge();
             break;
           }
         }
-      } finally { finishLedgerWrite(); }
-      // Re-read canonical totals and Calendar after acknowledgement; never invent FX.
-      await loadAppState(false);
-      if (state.activeView === 'calendar') changedMonths.add(monthKey(state.calendarCursor));
-      for (const month of changedMonths) await loadCalendarMonth(month, true);
-    })().finally(() => { outboxFlight = null; renderOutboxStatus(); renderRecent(); });
+      } finally { state.flushing = false; state.ledgerVersion++; }
+    })().finally(async () => {
+      outboxFlight = null;
+      renderOutboxStatus(); renderRecent();
+      // Only acknowledged mutations require reconciliation. Do not block the
+      // outbox on unrelated Calendar reads or on an unavailable backend.
+      if (acknowledged) {
+        for (const month of changedMonths) {
+          markCalendarMutation(month);
+          state.calendar.delete(month);
+          try { localStorage.removeItem(calendarCacheKey(month)); } catch (_) {}
+        }
+        await loadAppState(false);
+        if (state.activeView === 'calendar') void loadCalendarMonth(monthKey(state.calendarCursor), true);
+      }
+    });
     return outboxFlight;
   }
 
@@ -1232,6 +1262,7 @@
     $('expenseCurrency').addEventListener('change', () => {
       try { localStorage.setItem(EXPENSE_CURRENCY_KEY, $('expenseCurrency').value); } catch (_) {}
       scheduleConverter();
+      SpendApi.warmRate?.($('expenseCurrency').value, localIsoDate());
     });
     ['cashAmount','atmFee','cashDate'].forEach(id => {
       const el = $(id);
@@ -1254,18 +1285,19 @@
       loadCalendarMonth(monthKey(state.calendarCursor));
     });
     window.addEventListener('online', () => {
-      if (!state.busy) SpendApi.resetBridge();
+      if (!state.busy && !state.flushing && !state.syncing) SpendApi.resetBridge();
       void flushOutbox().then(() => loadAppState(false));
     });
     window.addEventListener('offline', renderOutboxStatus);
     window.addEventListener('pageshow', () => { void flushOutbox(); });
-    setInterval(() => { if (document.visibilityState !== 'hidden') void flushOutbox(); }, 30000);
+    setInterval(() => { if (document.visibilityState !== 'hidden') void flushOutbox(); }, 10000);
     document.addEventListener('visibilitychange', async () => {
       if (document.visibilityState === 'hidden') {
         state.hiddenAt = Date.now();
         return;
       }
-      void flushOutbox();
+      const hadPending = Object.keys(readOutbox()).length > 0;
+      if (hadPending) await flushOutbox();
       const awayMs = state.hiddenAt ? Date.now() - state.hiddenAt : 0;
       state.hiddenAt = 0;
       const dayChanged = refreshLocalDates();
@@ -1273,11 +1305,11 @@
       if (state.busy) { state.syncQueued = true; return; }
       if (!(await SpendApi.hasCode()) || state.syncing) return;
       if (state.busy) { state.syncQueued = true; return; }
-      SpendApi.resetBridge();
+      if (hadPending) return;
       window.LexiLifecycle?.mark('data-refresh-start');
       try {
         const refreshed = await loadAppState(false);
-        if (refreshed) void loadCalendarMonth(monthKey(state.calendarCursor), true);
+        if (refreshed && state.activeView === 'calendar') void loadCalendarMonth(monthKey(state.calendarCursor), true);
       } finally {
         window.LexiLifecycle?.mark('data-refresh-end');
       }
@@ -1289,6 +1321,10 @@
 
   async function init() {
     bind();
+    // Update checks must not wait behind slow Google Apps Script requests.
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('./sw.js', { scope:'./', updateViaCache:'none' }).catch(() => {});
+    }
     const today = localIsoDate();
     $('expenseDate').value = today;
     $('cashDate').value = today;
@@ -1298,15 +1334,13 @@
     restoreCachedAppState();
     showView(state.activeView, false);
     if (await SpendApi.hasCode()) {
-      const refreshed = await loadAppState(false);
-      if (refreshed) void loadCalendarMonth(monthKey(state.calendarCursor));
-      void flushOutbox();
+      const hadPending = Object.keys(readOutbox()).length > 0;
+      if (hadPending) await flushOutbox();
+      const refreshed = hadPending ? false : await loadAppState(false);
+      if (refreshed && state.activeView === 'calendar') void loadCalendarMonth(monthKey(state.calendarCursor));
     } else {
       setConnection('Not connected', 'error');
       openConnectDialog();
-    }
-    if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('./sw.js', { scope:'./' }).catch(() => {});
     }
   }
 

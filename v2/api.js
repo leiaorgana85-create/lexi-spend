@@ -17,6 +17,10 @@
   let nextId = 1;
   const pending = new Map();
   const calendarRefreshes = new Map();
+  const rateRequests = new Map();
+  const FX_KEY = 'lexiSpendV2FxRatesV1';
+  let rates = {};
+  try { rates = JSON.parse(localStorage.getItem(FX_KEY) || '{}') || {}; } catch (_) {}
 
   function allowedOrigin(origin) {
     try {
@@ -146,6 +150,8 @@
   }
 
   function resetBridge() {
+    // Removing a frame with outstanding calls strands their acknowledgements.
+    if (pending.size) return false;
     try { frame?.remove(); } catch (_) {}
     frame = null;
     target = null;
@@ -153,6 +159,7 @@
     readyPromise = null;
     readyResolve = null;
     ensureFrame(true);
+    return true;
   }
 
   function waitReady() {
@@ -264,6 +271,7 @@
 
   async function call(functionName, parameters = [], options = {}) {
     const name = String(functionName || '').trim();
+    if (name === 'previewUsd') return previewUsd(parameters, options);
     if (name !== 'getCalendarMonth') {
       return callBackend(name, parameters, options);
     }
@@ -272,6 +280,42 @@
     if (!validCalendarMonth(month)) return callBackend(name, parameters, options);
 
     return refreshCalendarMonth(month, options);
+  }
+
+  async function previewUsd(parameters, options = {}) {
+    const [amount, currency, date] = parameters;
+    const n = Number(amount);
+    const curr = String(currency || '').trim().toUpperCase();
+    const day = String(date || '').trim();
+    if (!Number.isFinite(n) || n < 0 || !curr || !/^\d{4}-\d{2}-\d{2}$/.test(day)) {
+      throw new Error('Invalid conversion.');
+    }
+    if (curr === 'USD') return { rate:1, usdAmount:Math.round(n * 100) / 100, effectiveDate:day };
+    const key = `${curr}:${day}`;
+    let fx = rates[key];
+    if (!(Number(fx?.rate) > 0) || !Number.isFinite(Number(fx.rate))) {
+      if (navigator.onLine === false) throw new Error('No saved exchange rate for this date.');
+      if (!rateRequests.has(key)) {
+        const request = callBackend('previewUsd', [1, curr, day], { timeoutMs:20000, ...options })
+          .then(result => {
+            if (!(Number(result?.rate) > 0) || !Number.isFinite(Number(result.rate))) throw new Error('Invalid exchange rate.');
+            rates[key] = { rate:Number(result.rate), effectiveDate:result.effectiveDate || day, source:result.source || '' };
+            // Bound storage; each entry is a dated reference rate, never a rounded dollar preview.
+            const keys = Object.keys(rates).sort((a,b) => b.slice(-10).localeCompare(a.slice(-10)));
+            keys.slice(90).forEach(old => delete rates[old]);
+            try { localStorage.setItem(FX_KEY, JSON.stringify(rates)); } catch (_) {}
+            return rates[key];
+          }).finally(() => rateRequests.delete(key));
+        rateRequests.set(key, request);
+      }
+      fx = await rateRequests.get(key);
+    }
+    return { ...fx, usdAmount:Math.round((n * Number(fx.rate) + Number.EPSILON) * 100) / 100 };
+  }
+
+  function warmRate(currency, date) {
+    if (navigator.onLine === false) return;
+    void previewUsd([1, currency, date]).catch(() => {});
   }
 
   async function connect(code, today) {
@@ -296,6 +340,7 @@
     connect,
     clearCode,
     hasCode,
+    warmRate,
     resetBridge
   });
 })();

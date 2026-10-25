@@ -38,7 +38,7 @@ function harness({ realApi=false, savedPending=null, savedCurrency=null, savedCa
   const intervals=[];w.setInterval=fn=>{intervals.push(fn);return intervals.length;};
   const f=fixture();const calls=[];let handler=async name=>name==='getAppState'?clone(f):emptyMonth();
   w.SpendApi={hasCode:async()=>true,resetBridge(){calls.push(['reset']);},call:async(...args)=>{calls.push(args);return handler(...args);}};
-  if(realApi)w.eval(source('v2/api.js'));
+  if(realApi){w.eval(source('v2/api.js'));w.SpendApi={...w.SpendApi,warmRate:()=>{}};}
   const code=source('v2/app.js').replace('  init();',`  window.audit={state,init,bind,renderApp,configureControls,loadAppState,loadCalendarMonth,
     beginLedgerWrite,finishLedgerWrite,saveExpense,deleteExpense,saveCash,deleteCash,flushOutbox,readOutbox,
     applyCalendarExpenseSave,applyCalendarExpenseDelete,refreshLocalDates,localIsoDate,saveCalendarCache,
@@ -53,6 +53,65 @@ function harness({ realApi=false, savedPending=null, savedCurrency=null, savedCa
 let passed=0;
 async function check(name,fn){await fn();passed++;console.log(`PASS ${name}`);}
 try {
+await check('FX coalesces concurrent amounts, calculates locally at full rate precision, persists and separates dates',async()=>{
+  const h=harness({realApi:true}),{w}=h;
+  w.localStorage.setItem('lexiSpendPrivateApiCodeV1','fixture-code');
+  const messages=[],target={postMessage:message=>messages.push(message)};
+  const reply=data=>w.dispatchEvent(new w.MessageEvent('message',{origin:'https://script.googleusercontent.com',source:target,data}));
+  reply({type:'lexi-spend-bridge-ready'});
+  const p=w.SpendApi.call('previewUsd',[100,'THB','2030-01-15']);
+  const q=w.SpendApi.call('previewUsd',[200,'THB','2030-01-15']);await turn();
+  assert.equal(messages.length,1);assert.deepEqual(clone(messages[0].parameters),[1,'THB','2030-01-15']);
+  reply({type:'lexi-spend-result',id:messages[0].id,ok:true,result:{rate:1/33,effectiveDate:'2030-01-14'}});
+  assert.equal((await p).usdAmount,3.03);assert.equal((await q).usdAmount,6.06);
+  assert.equal((await w.SpendApi.call('previewUsd',[500,'THB','2030-01-15'])).usdAmount,15.15);
+  assert.equal((await w.SpendApi.call('previewUsd',[500,'USD','2030-01-15'])).usdAmount,500);
+  assert.equal(messages.length,1);
+  const persisted=JSON.parse(w.localStorage.getItem('lexiSpendV2FxRatesV1'));assert.equal(persisted['THB:2030-01-15'].rate,1/33);
+  const next=w.SpendApi.call('previewUsd',[100,'THB','2030-01-16']);await turn();assert.equal(messages.length,2);
+  // An in-flight call must retain its transport, including while resuming.
+  const frame=w.document.getElementById('lexiSpendV2ApiBridge');assert.equal(w.SpendApi.resetBridge(),false);
+  assert.equal(w.document.getElementById('lexiSpendV2ApiBridge'),frame);
+  reply({type:'lexi-spend-result',id:messages[1].id,ok:true,result:{rate:1/32,effectiveDate:'2030-01-16'}});
+  assert.equal((await next).usdAmount,3.13);
+  const reopened=harness({realApi:true});reopened.w.localStorage.setItem('lexiSpendV2FxRatesV1',JSON.stringify(persisted));
+  reopened.w.eval(source('v2/api.js'));
+  Object.defineProperty(reopened.w.navigator,'onLine',{value:false,configurable:true});
+  assert.equal((await reopened.w.SpendApi.call('previewUsd',[330,'THB','2030-01-15'])).usdAmount,10);
+});
+await check('startup registers updates before network completion and drains pending writes before reads',async()=>{
+  const h=harness({savedOutbox:JSON.stringify({'logExpense:e1':{name:'logExpense',params:[{entryId:'e1',date:'2030-01-15',merchant:'Example',currency:'THB',amount:10}],affectedDate:'2030-01-15',token:'t1'}})});
+  let registered=false,resolveWrite;
+  Object.defineProperty(h.w.navigator,'serviceWorker',{configurable:true,value:{register:()=>{registered=true;return Promise.resolve();}}});
+  h.setHandler((name)=>name==='logExpense'?new Promise(resolve=>resolveWrite=resolve):Promise.resolve(clone(h.f)));
+  const start=h.a.init();await turn();assert.equal(registered,true);
+  assert.equal(h.calls[0][0],'logExpense');assert.equal(h.calls.filter(x=>x[0]==='getAppState').length,0);
+  assert.equal(h.$('saveExpenseButton').disabled,false);
+  resolveWrite({deduped:true});await start;
+  assert.equal(h.calls.filter(x=>x[0]==='getAppState').length,1);assert.equal(Object.keys(h.a.readOutbox()).length,0);
+  assert.equal(h.$('connectionBadge').textContent,'Connected');
+});
+await check('resume cannot remove a pending sync transport; new entries remain usable while flushing',async()=>{
+  const h=harness({savedOutbox:JSON.stringify({'logExpense:e1':{name:'logExpense',params:[{entryId:'e1',date:'2030-01-15',merchant:'Example',currency:'THB',amount:10}],affectedDate:'2030-01-15',token:'t1'}})});
+  h.a.bind();let resolveWrite;
+  h.setHandler(name=>name==='logExpense'?new Promise(resolve=>resolveWrite=resolve):Promise.resolve(clone(h.f)));
+  const flush=h.a.flushOutbox();await turn();assert.equal(h.a.state.flushing,true);assert.equal(h.$('saveExpenseButton').disabled,false);
+  Object.defineProperty(h.w.document,'visibilityState',{configurable:true,value:'hidden'});h.w.document.dispatchEvent(new h.w.Event('visibilitychange'));
+  h.setNow('2030-01-16T12:00:00Z');Object.defineProperty(h.w.document,'visibilityState',{configurable:true,value:'visible'});
+  h.w.document.dispatchEvent(new h.w.Event('visibilitychange'));await turn();assert.equal(h.calls.filter(x=>x[0]==='reset').length,0);
+  h.$('merchant').value='New entry';h.$('expenseAmount').value='20';await h.a.saveExpense({preventDefault(){}});
+  assert.equal(Object.keys(h.a.readOutbox()).length,2);assert.equal(h.calls.filter(x=>x[0]==='logExpense').length,1);
+  resolveWrite({deduped:true});await flush;await turn();assert.equal(Object.keys(h.a.readOutbox()).length,1);
+  h.setHandler(async name=>name==='getAppState'?clone(h.f):{deduped:true});await h.a.flushOutbox();
+  assert.equal(Object.keys(h.a.readOutbox()).length,0);
+});
+await check('pending errors stay visible with working Retry sync and clear after confirmation',async()=>{
+  const h=harness({savedOutbox:JSON.stringify({'deleteCashWithdrawal:c1':{name:'deleteCashWithdrawal',params:['c1'],token:'t1'}})});
+  h.setHandler(async()=>{throw Error('Backend unavailable');});await h.a.flushOutbox();
+  assert.match(h.$('pendingDetails').textContent,/Backend unavailable/);assert.equal(h.$('retryPendingButton').disabled,false);
+  h.setHandler(async name=>name==='getAppState'?clone(h.f):{alreadyDeleted:true});h.$('retryPendingButton').click();await turn();await turn();
+  assert.equal(Object.keys(h.a.readOutbox()).length,0);assert.equal(h.$('connectionBadge').textContent,'Connected');
+});
 await check('canonical Calendar refresh, request coalescing and no cache freshness renewal',async()=>{
   const h=harness({realApi:true}),{w,a}=h,key='lexiSpendV2Calendar:2030-01';
   w.localStorage.setItem('lexiSpendPrivateApiCodeV1','fixture-code');
@@ -160,7 +219,9 @@ await check('transient expense retry keeps the same Entry ID and submitted data'
     if(name==='getCalendarMonth')return emptyMonth();
     if(!first){first=clone(args[0]);throw new Error('network timeout');}
     assert.deepEqual(clone(args[0]),first);return {entryId:first.entryId,usdAmount:1,recent:[],summary:h.f.summary};
-  });await h.a.saveExpense({preventDefault(){}});assert.equal(h.$('expenseStatus').textContent,'Saved');
+  });await h.a.saveExpense({preventDefault(){}});
+  assert.match(h.$('expenseStatus').textContent,/Saved on device/);
+  await h.a.flushOutbox();assert.equal(Object.keys(h.a.readOutbox()).length,0);
 });
 await check('durable expense/Cash queues survive restart, failures and duplicate acknowledgements',async()=>{
   for(const kind of ['expense','cash']){
@@ -342,14 +403,14 @@ await check('JPY is absent from both currency menus and legacy preferences safel
   assert.equal(a.state.cashCurrency,'THB');assert.equal($('cashCurrency').value,'THB');assert.equal(a.state.app.cashWallets.JPY.balance,1000);
 });
 await check('service worker keeps sibling caches and uses only its current offline shell',async()=>{
-  const handlers={},deleted=[],matches=[];const own={match:async key=>{matches.push(key);return {own:true};}};
-  const context={URL,fetch:async()=>{throw new Error('offline');},caches:{keys:async()=>['lexi-spend2-shell-v31','lexi-spend2-shell-v32','lexi-spend2-shell-v33','lexi-spend2-shell-v34','lexi-spend2-shell-v35','lexi-spend2-shell-v36','lexi-spend2-shell-v37','lexi-spend2-shell-v38','lexi-spend2-shell-v39','lexi-spend-v2-old','sibling-shell'],delete:async k=>deleted.push(k),open:async()=>own,match(){throw new Error('origin-wide lookup');}},
+  const handlers={},deleted=[],matches=[];let fetches=0;const own={match:async key=>{matches.push(key);return {own:true};}};
+  const context={URL,fetch:()=>{fetches++;return new Promise(()=>{});},caches:{keys:async()=>['lexi-spend2-shell-v31','lexi-spend2-shell-v32','lexi-spend2-shell-v33','lexi-spend2-shell-v34','lexi-spend2-shell-v35','lexi-spend2-shell-v36','lexi-spend2-shell-v37','lexi-spend2-shell-v38','lexi-spend2-shell-v39','lexi-spend-v2-old','sibling-shell'],delete:async k=>deleted.push(k),open:async()=>own,match(){throw new Error('origin-wide lookup');}},
     self:{location:{origin:'https://example.test'},addEventListener:(t,f)=>handlers[t]=f,skipWaiting(){},clients:{claim:async()=>{}}}};
   vm.runInNewContext(source('v2/sw.js'),context);let work;
   handlers.activate({waitUntil:p=>work=p});await work;
   assert.deepEqual(deleted.sort(),['lexi-spend-v2-old','lexi-spend2-shell-v31','lexi-spend2-shell-v32','lexi-spend2-shell-v33','lexi-spend2-shell-v34','lexi-spend2-shell-v35','lexi-spend2-shell-v36','lexi-spend2-shell-v37','lexi-spend2-shell-v38','lexi-spend2-shell-v39']);
   const request={url:'https://example.test/lexi-spend/v2/app.js',method:'GET'};
-  handlers.fetch({request,respondWith:p=>work=p});assert.equal((await work).own,true);assert.equal(matches.length,1);
+  handlers.fetch({request,respondWith:p=>work=p});assert.equal((await work).own,true);assert.equal(matches.length,1);assert.equal(fetches,0,'cached launch cannot wait for a hanging online request');
   let handled=false;handlers.fetch({request:{url:'https://example.test/sibling/app.js',method:'GET'},respondWith(){handled=true;}});
   assert.equal(handled,false);
 });

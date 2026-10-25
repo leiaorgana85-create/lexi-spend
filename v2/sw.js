@@ -5,7 +5,7 @@
 // removed once during this cutover so old preview shells do not linger.
 const CACHE_PREFIX = 'lexi-spend2-';
 const LEGACY_CACHE_PREFIX = 'lexi-spend-v2-';
-const CACHE_NAME = `${CACHE_PREFIX}shell-v40`;
+const CACHE_NAME = `${CACHE_PREFIX}shell-v41`;
 const SHELL = [
   './lifecycle-diagnostics.js?v=1',
   './',
@@ -50,17 +50,22 @@ self.addEventListener('fetch', event => {
   if (!url.pathname.startsWith('/lexi-spend/v2/')) return;
 
   event.respondWith((async () => {
+    // The install step caches one complete release. Serve that release
+    // immediately; a slow but connected network must not stall every launch.
+    const cache = await caches.open(CACHE_NAME);
+    const cached = await cache.match(request);
+    if (cached) return cached;
+    if (request.mode === 'navigate') {
+      const shell = await cache.match('./index.html');
+      if (shell) return shell;
+    }
     try {
       const response = await fetch(request, { cache:'no-store' });
       if (response && response.ok) {
-        const cache = await caches.open(CACHE_NAME);
         cache.put(request, response.clone()).catch(() => {});
       }
       return response;
     } catch (_) {
-      const cache = await caches.open(CACHE_NAME);
-      const cached = await cache.match(request);
-      if (cached) return cached;
       if (request.mode === 'navigate') {
         const fallback = await cache.match('./index.html');
         if (fallback) return fallback;
