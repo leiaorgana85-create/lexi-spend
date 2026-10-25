@@ -242,14 +242,15 @@
       <div class="card-title-row"><h2>Settings</h2><button id="closeSettingsButton" class="icon-button" type="button" aria-label="Close">×</button></div>
       <div class="settings-list">
         <div class="settings-row"><span>Connection</span><strong id="settingsConnection">—</strong></div>
+        <div class="settings-row"><span>Last full refresh</span><strong id="settingsLastSynced">Not yet confirmed</strong></div>
         <div class="settings-row"><span>Backend</span><strong id="settingsBackendVersion">—</strong></div>
         <div class="settings-row"><span>Frontend</span><strong id="settingsFrontendVersion">—</strong></div>
       </div>
-      <div class="dialog-actions"><button id="reconnectButton" class="ghost-button" type="button">Enter API code</button><button id="forgetApiCodeButton" class="ghost-button danger-button" type="button">Forget API code</button></div>
+      <div class="dialog-actions"><button id="refreshAppButton" class="ghost-button" type="button">Refresh data</button><button id="reconnectButton" class="ghost-button" type="button">Enter API code</button><button id="forgetApiCodeButton" class="ghost-button danger-button" type="button">Forget API code</button></div>
     </div>
   </dialog>
 
-  <script src="./lifecycle-diagnostics.js?v=1" data-app="Lexi Spend" data-build="2026-10-24.lifecycle-1"></script>
+  <script src="./lifecycle-diagnostics.js?v=2" data-app="Lexi Spend" data-build="2026-10-25.sync-1"></script>
   <script src="./app.js"></script>
   <script src="./track.js"></script>
 </body>

@@ -32,6 +32,14 @@
     }
     record(event, safe);
   }
+  const operations = new Set(['getAppState', 'getCalendarMonth', 'previewUsd', 'logExpense',
+    'deleteExpense', 'addCashWithdrawal', 'deleteCashWithdrawal', 'uploadReceipt']);
+  function sync(event, detail = {}) {
+    if (!['ack', 'error', 'confirmed'].includes(event) || !operations.has(detail.operation)) return;
+    const safe = { operation:detail.operation };
+    if (Number.isFinite(detail.durationMs) && detail.durationMs >= 0) safe.durationMs = Math.round(detail.durationMs);
+    record(`sync-${event}`, safe);
+  }
   function snapshot() {
     return {
       schemaVersion: 1, app, build, exportedAt: new Date().toISOString(),
@@ -46,7 +54,7 @@
       events: entries.map(e => ({ ...e }))
     };
   }
-  window.LexiLifecycle = Object.freeze({ mark, snapshot });
+  window.LexiLifecycle = Object.freeze({ mark, sync, snapshot });
   const nav = performance.getEntriesByType?.('navigation')?.[0];
   record('launch', {
     build, navigation: nav?.type || 'unknown',
@@ -95,7 +103,7 @@
     const dialog = document.createElement('dialog');
     dialog.id = 'lexiLifecycleDialog';
     dialog.setAttribute('aria-labelledby', 'lexiLifecycleTitle');
-    dialog.innerHTML = '<h2 id="lexiLifecycleTitle">App diagnostics</h2><p class="diag-summary"></p><p>Switch to another app for about a minute, return here, then share the log. It contains technical events, without notes or spending details.</p><button type="button" data-diag="share">Share log</button><button type="button" data-diag="download">Download log</button><button type="button" data-diag="close">Close</button><p class="diag-status" role="status"></p><pre></pre>';
+    dialog.innerHTML = '<h2 id="lexiLifecycleTitle">App diagnostics</h2><p class="diag-summary"></p><p class="diag-sync"></p><p>Timings measure this device’s request through acknowledgement, including connection time. Queue-to-confirm includes time waiting offline. These are not separate server-write timings. Logs contain technical events, without notes or spending details.</p><button type="button" data-diag="share">Share log</button><button type="button" data-diag="download">Download log</button><button type="button" data-diag="close">Close</button><p class="diag-status" role="status"></p><pre></pre>';
     document.body.appendChild(dialog);
     const status = dialog.querySelector('.diag-status');
     function makeFile() {
@@ -126,7 +134,11 @@
     button.addEventListener('click', () => {
       const launches = entries.filter(e => e.event === 'launch').length;
       dialog.querySelector('.diag-summary').textContent = `${app} · page loaded ${new Date(startedAt).toLocaleTimeString()} · ${launches} page load${launches === 1 ? '' : 's'} in retained log.${storageAvailable ? '' : ' Storage unavailable; export before leaving.'}`;
-      dialog.querySelector('pre').textContent = entries.slice(-20).map(e => `${e.at.slice(11, 19)} ${e.event}${e.awayMs != null ? ` (${Math.round(e.awayMs / 1000)}s away)` : ''} · ${e.page === page ? 'current page' : 'earlier page'}`).join('\n');
+      const recent = operation => [...entries].reverse().find(e => e.event === 'sync-ack' && operation(e.operation));
+      const write = recent(op => ['logExpense', 'deleteExpense', 'addCashWithdrawal', 'deleteCashWithdrawal'].includes(op));
+      const read = recent(op => op === 'getAppState');
+      dialog.querySelector('.diag-sync').textContent = `Last save acknowledgement: ${write ? (write.durationMs / 1000).toFixed(2) + 's' : 'not measured yet'}. Last data refresh: ${read ? (read.durationMs / 1000).toFixed(2) + 's' : 'not measured yet'}.`;
+      dialog.querySelector('pre').textContent = entries.slice(-20).map(e => `${e.at.slice(11, 19)} ${e.event}${e.operation ? ` ${e.operation}` : ''}${e.durationMs != null ? ` ${(e.durationMs / 1000).toFixed(2)}s` : ''}${e.awayMs != null ? ` (${Math.round(e.awayMs / 1000)}s away)` : ''} · ${e.page === page ? 'current page' : 'earlier page'}`).join('\n');
       status.textContent = '';
       dialog.showModal();
     });
