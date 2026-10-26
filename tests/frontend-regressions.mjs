@@ -21,10 +21,11 @@ function fixture() {
       {name:'Category B',spent:0,limit:50}]} };
 }
 const windows=[];
-function harness({ realApi=false, savedPending=null, savedCurrency=null, savedCashCurrency=null, savedOutbox=null }={}) {
+function harness({ realApi=false, savedPending=null, savedCurrency=null, savedCashCurrency=null, savedOutbox=null, savedDrafts=null }={}) {
   const w = new Window({url:'https://example.test/lexi-spend/v2/',settings:{
     disableCSSFileLoading:true,disableJavaScriptFileLoading:true,disableIframePageLoading:true }});
   windows.push(w);
+  if(savedDrafts)w.localStorage.setItem('lexiSpendV2FormDraftsV1',savedDrafts);
   if(savedOutbox)w.localStorage.setItem('lexiSpendV2OutboxV1',savedOutbox);
   if(savedCashCurrency)w.localStorage.setItem('lexiSpendV2CashCurrency',savedCashCurrency);
   if(savedCurrency)w.localStorage.setItem('lexiSpendV2ExpenseCurrency',savedCurrency);
@@ -42,7 +43,7 @@ function harness({ realApi=false, savedPending=null, savedCurrency=null, savedCa
   const code=source('v2/app.js').replace('  init();',`  window.audit={state,init,bind,renderApp,configureControls,loadAppState,loadCalendarMonth,
     beginLedgerWrite,finishLedgerWrite,saveExpense,deleteExpense,saveCash,deleteCash,flushOutbox,readOutbox,
     applyCalendarExpenseSave,applyCalendarExpenseDelete,refreshLocalDates,localIsoDate,saveCalendarCache,refreshVisibleData,restoreCachedAppState,
-    updateConverter,updateExpensePreview,updateCashPreview,scheduleConverter,scheduleExpensePreview,scheduleCashPreview};`);
+    updateConverter,updateExpensePreview,updateCashPreview,scheduleConverter,scheduleExpensePreview,scheduleCashPreview,persistFormDraft,restoreFormDrafts};`);
   assert.notEqual(code,source('v2/app.js'),'test entrypoint marker');w.eval(code.replace('function writeOutbox(value) {', 'function writeOutbox(value) { if(window.auditStorageFull)throw Error("Storage full");'));
   const a=w.audit,$=id=>w.document.getElementById(id);
   a.state.app=clone(f);a.state.cashCurrency='THB';a.state.calendarCursor=new w.Date(2030,0,1);
@@ -547,6 +548,73 @@ await check('diagnostics stay removed without changing the pending outbox',async
   const h=harness({savedOutbox:JSON.stringify(pending)});
   assert.equal(h.w.document.querySelector('[aria-label="App diagnostics"]'),null);
   assert.deepEqual(clone(h.a.readOutbox()),pending);
+});
+await check('unfinished expense and ATM drafts survive restart with date, currency, category, payment and Actual USD intact',async()=>{
+  const h=harness();await h.a.init();
+  const values={merchant:'Unsubmitted fixture',expenseAmount:'123',expenseActualUsd:'3.5',expenseNote:'Unsubmitted note',category:'Category B',expenseCurrency:'USD',paymentMethod:'Cash',expenseDate:'2030-01-14',cashAmount:'2000',atmFee:'220',bankDebitUsd:'70',cashNote:'ATM draft',cashCurrency:'KRW',cashDate:'2030-01-13'};
+  for(const [id,value] of Object.entries(values)){h.$(id).value=value;h.$(id).dispatchEvent(new h.w.Event(['category','expenseCurrency','paymentMethod','expenseDate','cashCurrency','cashDate'].includes(id)?'change':'input',{bubbles:true}));}
+  const r=harness({savedDrafts:h.w.localStorage.getItem('lexiSpendV2FormDraftsV1')});await r.a.init();
+  for(const [id,value] of Object.entries(values))assert.equal(r.$(id).value,value,id);
+  assert.equal(r.a.state.manualDates.expense,true);assert.equal(r.a.state.manualDates.cash,true);
+  assert.equal(r.calls.some(([name])=>name==='logExpense'||name==='addCashWithdrawal'),false,'Restoring a draft must never submit it');
+  await r.a.loadAppState();for(const [id,value] of Object.entries(values))assert.equal(r.$(id).value,value,'background read '+id);
+});
+await check('restored text reveals its note and Cash payment; payment taps persist without a blur',async()=>{
+  const h=harness({savedDrafts:JSON.stringify({expense:{fields:{expenseNote:'Restored note',paymentMethod:'Cash'},manualDate:false}})});await h.a.init();h.w.eval(source('v2/track.js'));
+  assert.equal(h.$('noteBox').hidden,false);assert(h.$('payCash').classList.contains('active'));
+  h.$('payCard').click();assert.equal(JSON.parse(h.w.localStorage.getItem('lexiSpendV2FormDraftsV1')).expense.fields.paymentMethod,'Card');
+});
+await check('durably submitted forms do not reappear as new purchases after a restart during acknowledgement',async()=>{
+  for(const kind of ['expense','cash']){
+    const h=harness();await h.a.init();h.$('merchant').value='Submitted fixture';h.$('expenseAmount').value='10';h.$('cashAmount').value='100';
+    h.a.persistFormDraft(kind);let release;
+    h.setHandler(async name=>{if(name===(kind==='expense'?'logExpense':'addCashWithdrawal'))return new Promise(resolve=>release=resolve);return name==='getAppState'?clone(h.f):emptyMonth()});
+    const save=h.a[kind==='expense'?'saveExpense':'saveCash']({preventDefault(){}});await turn();assert(release);
+    const savedOutbox=h.w.localStorage.getItem('lexiSpendV2OutboxV1'),savedDrafts=h.w.localStorage.getItem('lexiSpendV2FormDraftsV1');
+    const r=harness({savedOutbox,savedDrafts});Object.defineProperty(r.w.navigator,'onLine',{value:false,configurable:true});await r.a.init();
+    assert.equal(r.$(kind==='expense'?'expenseAmount':'cashAmount').value,'','Submitted amount must not be restored');
+    assert.equal(Object.values(r.a.readOutbox())[0].params[0].entryId,Object.values(h.a.readOutbox())[0].params[0].entryId);
+    release(kind==='expense'?{recent:[],summary:h.f.summary,usdAmount:1}:{deduped:true});await save;
+    const clean=harness({savedDrafts:h.w.localStorage.getItem('lexiSpendV2FormDraftsV1')});await clean.a.init();
+    assert.equal(clean.$(kind==='expense'?'expenseAmount':'cashAmount').value,'','Acknowledged amount must not return either');
+  }
+});
+await check('crash between enqueue and draft cleanup retains the outbox ID and suppresses only submitted fields',async()=>{
+  const submitted={merchant:'Sent fixture',expenseAmount:'10',expenseActualUsd:'',expenseNote:'Sent note'};
+  const entry={name:'logExpense',params:[{entryId:'stable-existing-id',amount:10}],token:'fixture',formSubmission:{kind:'expense',draftId:'submitted-draft',fields:submitted}};
+  const h=harness({savedOutbox:JSON.stringify({'logExpense:stable-existing-id':entry}),savedDrafts:JSON.stringify({expense:{id:'submitted-draft',fields:{...submitted,expenseNote:'Newer unsent note'},manualDate:false}})});
+  Object.defineProperty(h.w.navigator,'onLine',{value:false,configurable:true});await h.a.init();
+  assert.equal(h.$('merchant').value,'');assert.equal(h.$('expenseAmount').value,'');assert.equal(h.$('expenseNote').value,'Newer unsent note');
+  assert.equal(Object.values(h.a.readOutbox())[0].params[0].entryId,'stable-existing-id');
+});
+await check('draft persistence preserves edits made during save and allows the same value as a genuinely new draft',async()=>{
+  const h=harness();await h.a.init();h.$('merchant').value='First';h.$('expenseAmount').value='10';let release;
+  h.setHandler(async name=>name==='logExpense'?new Promise(resolve=>release=resolve):name==='getAppState'?clone(h.f):emptyMonth());
+  const save=h.a.saveExpense({preventDefault(){}});await turn();h.$('merchant').value='Second';h.$('merchant').dispatchEvent(new h.w.Event('input',{bubbles:true}));
+  release({recent:[],summary:h.f.summary,usdAmount:1});await save;
+  let r=harness({savedDrafts:h.w.localStorage.getItem('lexiSpendV2FormDraftsV1')});await r.a.init();assert.equal(r.$('merchant').value,'Second');assert.equal(r.$('expenseAmount').value,'');
+  h.$('merchant').value='First';h.$('expenseAmount').value='10';h.$('expenseAmount').dispatchEvent(new h.w.Event('input',{bubbles:true}));
+  r=harness({savedDrafts:h.w.localStorage.getItem('lexiSpendV2FormDraftsV1')});await r.a.init();assert.equal(r.$('merchant').value,'First');assert.equal(r.$('expenseAmount').value,'10');
+});
+await check('empty restored drafts advance the automatic date while real and explicitly dated drafts retain their date',async()=>{
+  for(const [fields,manual,expected] of [[{expenseDate:'2030-01-14'},false,'2030-01-15'],[{expenseDate:'2030-01-14',merchant:'Unsent'},false,'2030-01-14'],[{expenseDate:'2030-01-14'},true,'2030-01-14']]){
+    const h=harness({savedDrafts:JSON.stringify({expense:{fields,manualDate:manual}})});await h.a.init();h.a.refreshLocalDates();assert.equal(h.$('expenseDate').value,expected);
+  }
+});
+await check('a new draft sharing an amount with an older pending purchase keeps every field on restart',async()=>{
+  const h=harness();await h.a.init();Object.defineProperty(h.w.navigator,'onLine',{value:false,configurable:true});
+  h.$('merchant').value='First queued purchase';h.$('expenseAmount').value='10';await h.a.saveExpense({preventDefault(){}});
+  h.$('merchant').value='Second unfinished purchase';h.$('expenseAmount').value='10';h.$('expenseAmount').dispatchEvent(new h.w.Event('input',{bubbles:true}));
+  const r=harness({savedDrafts:h.w.localStorage.getItem('lexiSpendV2FormDraftsV1'),savedOutbox:h.w.localStorage.getItem('lexiSpendV2OutboxV1')});
+  Object.defineProperty(r.w.navigator,'onLine',{value:false,configurable:true});await r.a.init();
+  assert.equal(r.$('merchant').value,'Second unfinished purchase');assert.equal(r.$('expenseAmount').value,'10');assert.equal(Object.keys(r.a.readOutbox()).length,1);
+});
+await check('cold startup restores selections after delayed categories arrive and before track UI saves its initial state',async()=>{
+  const h=harness({savedDrafts:JSON.stringify({expense:{id:'cold-draft',fields:{merchant:'Cold fixture',expenseAmount:'10',category:'Category B',expenseCurrency:'USD',paymentMethod:'Cash'},manualDate:false}})});
+  h.a.state.app=null;h.$('expenseCurrency').replaceChildren();h.$('cashCurrency').replaceChildren();h.$('category').replaceChildren();let release;
+  h.setHandler(async name=>name==='getAppState'?new Promise(resolve=>release=resolve):emptyMonth());
+  const start=h.a.init();h.w.eval(source('v2/track.js'));await turn();assert(release);release(clone(h.f));await start;
+  assert.equal(h.$('expenseCurrency').value,'USD');assert.equal(h.$('category').value,'Category B');assert.equal(h.$('paymentMethod').value,'Cash');assert.equal(h.$('merchant').value,'Cold fixture');
 });
 console.log(`${passed} regression groups passed. DOM/API responses are simulated; no live ledger writes.`);
 } finally {for(const w of windows)await w.happyDOM.close();}

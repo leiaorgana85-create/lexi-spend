@@ -23,6 +23,7 @@
     $('payCash')?.classList.toggle('active', method === 'Cash');
     $('payCard')?.setAttribute('aria-pressed', String(method === 'Card'));
     $('payCash')?.setAttribute('aria-pressed', String(method === 'Cash'));
+    $('paymentMethod')?.dispatchEvent(new Event('change', {bubbles:true}));
   }
 
   function updateDateDisplay() {
@@ -41,12 +42,12 @@
     $('clearAmount')?.classList.toggle('show', Boolean($('expenseAmount')?.value));
   }
 
-  function setNoteOpen(open) {
+  function setNoteOpen(open, focus = true) {
     const box = $('noteBox');
     if (!box) return;
     box.hidden = !open;
     if ($('noteToggle')) $('noteToggle').textContent = open ? '− Hide note' : '+ Add note';
-    if (open) setTimeout(() => $('expenseNote')?.focus(), 0);
+    if (open && focus) setTimeout(() => $('expenseNote')?.focus(), 0);
   }
 
   function init() {
@@ -57,7 +58,7 @@
     updateDateDisplay();
     updateClearButtons();
     setPayment($('paymentMethod')?.value || 'Card');
-    setNoteOpen(false);
+    setNoteOpen(Boolean($('expenseNote')?.value), false);
 
     new MutationObserver(updateConverterSymbol).observe(currency, { childList:true, subtree:true });
     currency.addEventListener('change', updateConverterSymbol);

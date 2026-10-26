@@ -10,6 +10,14 @@
   const PENDING_SAVES_KEY = 'lexiSpendV2PendingSaves';
   const pendingSaves = readJson(PENDING_SAVES_KEY) || {};
   const OUTBOX_KEY = 'lexiSpendV2OutboxV1';
+  const FORM_DRAFTS_KEY = 'lexiSpendV2FormDraftsV1';
+  const FORM_FIELDS = {
+    expense:['merchant','expenseAmount','expenseActualUsd','expenseNote','category','expenseCurrency','paymentMethod','expenseDate'],
+    cash:['cashAmount','atmFee','bankDebitUsd','cashNote','cashCurrency','cashDate']
+  };
+  const activeFormSubmissions = {};
+  const formDraftIds = {};
+  const restoredSelections = {};
   let outboxFlight = null;
   const $ = id => document.getElementById(id);
 
@@ -132,11 +140,66 @@
   function configureControls() {
     const defaultCurrency = CURRENCIES.includes(state.app?.currency) ? state.app.currency : 'THB';
     if (!CURRENCIES.includes(state.cashCurrency)) state.cashCurrency = defaultCurrency;
-    fillSelect($('expenseCurrency'), CURRENCIES, $('expenseCurrency').value || readExpenseCurrency() || defaultCurrency);
+    fillSelect($('expenseCurrency'), CURRENCIES, $('expenseCurrency').value || restoredSelections.expenseCurrency || readExpenseCurrency() || defaultCurrency);
     fillSelect($('cashCurrency'), CURRENCIES, state.cashCurrency || defaultCurrency);
     const categorySelect = $('category');
-    fillSelect(categorySelect, categories().map(item => item.name), categorySelect.value);
+    fillSelect(categorySelect, categories().map(item => item.name), categorySelect.value || restoredSelections.category);
+    for (const id of Object.keys(restoredSelections)) {
+      if ($(id)?.value === restoredSelections[id]) delete restoredSelections[id];
+    }
     SpendApi.warmRate?.($('expenseCurrency').value, localIsoDate());
+  }
+
+  function readFormDrafts() {
+    const value = readJson(FORM_DRAFTS_KEY);
+    return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+  }
+
+  function persistFormDraft(kind) {
+    const all = readFormDrafts();
+    const id = formDraftIds[kind] || (formDraftIds[kind] = all[kind]?.id || uuid());
+    const submitted = activeFormSubmissions[kind] || {};
+    const fields = Object.fromEntries(FORM_FIELDS[kind].map(id => {
+      const value = $(id)?.value || restoredSelections[id] || '';
+      return [id, Object.hasOwn(submitted, id) && submitted[id] === value ? '' : value];
+    }));
+    all[kind] = { id, fields, manualDate:Boolean(state.manualDates[kind]) };
+    try { localStorage.setItem(FORM_DRAFTS_KEY, JSON.stringify(all)); }
+    catch (_) { setStatus(`${kind}Status`, 'Draft could not be saved on this device.', true); }
+  }
+
+  function restoreFormDrafts() {
+    const all = readFormDrafts();
+    for (const kind of Object.keys(FORM_FIELDS)) {
+      const draft = all[kind];
+      if (!draft?.fields || typeof draft.fields !== 'object') continue;
+      formDraftIds[kind] = draft.id || uuid();
+      const fields = { ...draft.fields };
+      // A restart between durable enqueue and draft cleanup must not resurrect
+      // a submitted purchase as an apparently new, unsubmitted form.
+      for (const entry of Object.values(readOutbox())) {
+        if (entry.formSubmission?.kind !== kind || !draft.id || entry.formSubmission.draftId !== draft.id) continue;
+        for (const [id, value] of Object.entries(entry.formSubmission.fields || {})) {
+          if (fields[id] === value) fields[id] = '';
+        }
+      }
+      const contentIds = kind === 'expense'
+        ? ['merchant','expenseAmount','expenseActualUsd','expenseNote']
+        : ['cashAmount','atmFee','bankDebitUsd','cashNote'];
+      const hasContent = contentIds.some(id => String(fields[id] || '').trim());
+      for (const id of FORM_FIELDS[kind]) {
+        if (typeof fields[id] !== 'string' || !$(id)) continue;
+        if (id === `${kind}Date` && !draft.manualDate && !hasContent) continue;
+        if (id.endsWith('Currency') && !CURRENCIES.includes(fields[id])) continue;
+        if (id === 'paymentMethod' && !['Card','Cash'].includes(fields[id])) continue;
+        if ($(id).tagName === 'SELECT' && ![...$(id).options].some(option => option.value === fields[id])) {
+          restoredSelections[id] = fields[id];
+        } else $(id).value = fields[id];
+      }
+      state.manualDates[kind] = Boolean(draft.manualDate);
+      if (kind === 'cash' && CURRENCIES.includes(fields.cashCurrency)) state.cashCurrency = fields.cashCurrency;
+    }
+    if (state.app) configureControls();
   }
 
   function hasFormDraft(kind) {
@@ -166,6 +229,7 @@
     Object.entries(values).forEach(([id, value]) => {
       if ($(id).value === value) $(id).value = '';
     });
+    for (const kind of Object.keys(FORM_FIELDS)) persistFormDraft(kind);
   }
 
   function beginLedgerWrite() {
@@ -385,7 +449,7 @@
     renderCash();
     setLedgerButtons(state.busy);
     setText('settingsBackendVersion', state.app.appVersion || '—');
-    setText('settingsFrontendVersion', 'v2.2.3');
+    setText('settingsFrontendVersion', 'v2.2.4');
     renderOutboxStatus();
     if (persist) saveJson(APP_STATE_CACHE_KEY, { savedAt:Date.now(), confirmedAt:state.lastConfirmedAt, app:state.app });
   }
@@ -684,11 +748,15 @@
     }
   }
 
-  async function durableWrite(name, params, affectedDate = '') {
+  async function durableWrite(name, params, affectedDate = '', formSubmission = null) {
     const id = `${name}:${typeof params[0] === 'object' ? params[0].entryId : params[0]}`;
     const all = readOutbox();
-    all[id] = { name, params, affectedDate:affectedDate || params[0]?.date || '', token:uuid(), queuedAt:Date.now() };
+    all[id] = { name, params, affectedDate:affectedDate || params[0]?.date || '', token:uuid(), queuedAt:Date.now(), ...(formSubmission ? {formSubmission} : {}) };
     writeOutbox(all);
+    if (formSubmission) {
+      activeFormSubmissions[formSubmission.kind] = formSubmission.fields;
+      persistFormDraft(formSubmission.kind);
+    }
     const entry = all[id];
     if (navigator.onLine === false || state.flushing) { renderOutboxStatus(); return { queued:true }; }
     try {
@@ -826,7 +894,7 @@
     };
     const { entryId, signature } = pendingSave('expense', payload);
     try {
-      const result = await durableWrite('logExpense', [{ ...payload, entryId }]);
+      const result = await durableWrite('logExpense', [{ ...payload, entryId }], '', {kind:'expense', draftId:formDraftIds.expense || (formDraftIds.expense = uuid()), fields:submitted});
       confirmSave('expense', signature);
       if (result.queued) {
         clearSubmittedFields(submitted); setText('expenseUsdPreview', '');
@@ -858,6 +926,9 @@
     } catch (error) {
       setStatus('expenseStatus', error?.message || 'Could not save expense.', true);
     } finally {
+      delete activeFormSubmissions.expense;
+      formDraftIds.expense = uuid();
+      persistFormDraft('expense');
       finishLedgerWrite();
     }
   }
@@ -961,7 +1032,7 @@
     };
     const { entryId, signature } = pendingSave('cash', payload);
     try {
-      const result = await durableWrite('addCashWithdrawal', [{ ...payload, entryId }]);
+      const result = await durableWrite('addCashWithdrawal', [{ ...payload, entryId }], '', {kind:'cash', draftId:formDraftIds.cash || (formDraftIds.cash = uuid()), fields:submitted});
       confirmSave('cash', signature);
       if (result.queued) {
         clearSubmittedFields(submitted); setText('cashUsdPreview', ''); renderOutboxStatus();
@@ -973,7 +1044,7 @@
       setText('cashUsdPreview', '');
       setStatus('cashStatus', result.deduped ? 'Saved · confirmed retry' : 'Saved');
     } catch (error) { setStatus('cashStatus', error?.message || 'Could not save withdrawal.', true); }
-    finally { finishLedgerWrite(); }
+    finally { delete activeFormSubmissions.cash; formDraftIds.cash = uuid(); persistFormDraft('cash'); finishLedgerWrite(); }
   }
 
   async function deleteCash(withdrawal) {
@@ -1303,6 +1374,7 @@
         state.manualDates[kind] = $(`${kind}Date`).value !== state.autoDates[kind];
       });
       $(`${kind}Form`).addEventListener('focusin', refreshLocalDates);
+      for (const type of ['input','change']) $(`${kind}Form`).addEventListener(type, () => persistFormDraft(kind));
     });
     $('expenseForm').addEventListener('submit', saveExpense);
     $('cashForm').addEventListener('submit', saveCash);
@@ -1338,11 +1410,13 @@
       void flushOutbox().then(() => loadAppState(false));
     });
     window.addEventListener('offline', renderOutboxStatus);
+    window.addEventListener('pagehide', () => { for (const kind of Object.keys(FORM_FIELDS)) persistFormDraft(kind); });
     window.addEventListener('pageshow', () => { void flushOutbox(); });
     setInterval(() => { if (document.visibilityState !== 'hidden') void flushOutbox(); }, 10000);
     document.addEventListener('visibilitychange', async () => {
       if (document.visibilityState === 'hidden') {
         state.hiddenAt = Date.now();
+        for (const kind of Object.keys(FORM_FIELDS)) persistFormDraft(kind);
         return;
       }
       const hadPending = Object.keys(readOutbox()).length > 0;
@@ -1389,6 +1463,7 @@
     state.activeView = readView();
     state.cashCurrency = readCashCurrency();
     restoreCachedAppState();
+    restoreFormDrafts();
     showView(state.activeView, false);
     if (await SpendApi.hasCode()) {
       const hadPending = Object.keys(readOutbox()).length > 0;
