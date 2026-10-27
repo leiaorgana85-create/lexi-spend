@@ -156,7 +156,7 @@ await check('canonical Calendar refresh, request coalescing and no cache freshne
 await check('Calendar rejects a response predating a confirmed mutation and converges',async()=>{
   const h=harness(),{a}=h;const pending=[];h.setHandler(()=>new Promise(resolve=>pending.push(resolve)));
   a.saveCalendarCache('2030-01',emptyMonth());
-  const p=a.loadCalendarMonth('2030-01');
+  const p=a.loadCalendarMonth('2030-01',true);
   a.applyCalendarExpenseSave({entryId:'fixture1',date:'2030-01-15',usdAmount:2,category:'Category A'});
   const expected=clone(a.state.calendar.get('2030-01'));
   pending.shift()(emptyMonth());await p;await turn();
@@ -164,6 +164,42 @@ await check('Calendar rejects a response predating a confirmed mutation and conv
   pending.shift()(expected);await turn();assert.equal(a.state.calendar.get('2030-01').monthTotalUsd,2);
   a.applyCalendarExpenseDelete({entryId:'fixture1',date:'2030-01-15'});
   assert.equal(a.state.calendar.get('2030-01').transactionCount,0);
+});
+await check('Calendar draws uncached month dates immediately without showing old transactions or false zero totals',async()=>{
+  const h=harness();h.a.bind();h.a.state.activeView='calendar';const replies=[];
+  h.setHandler(()=>new Promise(resolve=>replies.push(resolve)));
+  const first=h.a.loadCalendarMonth('2030-01');
+  assert.equal(h.$('calendarGrid').children.length,42);
+  assert.equal(h.$('selectedDayTotal').textContent,'—');
+  assert.match(h.$('selectedDayTransactions').textContent,/Loading/);
+  replies.shift()(emptyMonth());await first;
+  h.$('calendarNextButton').click();
+  assert.match(h.$('calendarMonthTitle').textContent,/February/);
+  assert.equal(h.$('calendarGrid').firstChild.dataset.date,'2030-01-28');
+  assert.equal(h.$('selectedDayTotal').textContent,'—');
+  replies.shift()(emptyMonth());await turn();assert.equal(h.$('selectedDayTotal').textContent,'$0.00');
+});
+await check('Calendar warm visits reuse confirmed data for 60 seconds while forced and stale reads still refresh',async()=>{
+  const h=harness();h.a.state.activeView='calendar';
+  await h.a.loadCalendarMonth('2030-01');await h.a.loadCalendarMonth('2030-01');await h.a.loadCalendarMonth('2030-01');
+  assert.equal(h.calls.length,1);
+  const before=JSON.parse(h.w.localStorage.getItem('lexiSpendV2Calendar:2030-01')).savedAt;
+  h.setNow('2030-01-15T12:00:30Z');h.a.applyCalendarExpenseSave({entryId:'fixture1',date:'2030-01-15',usdAmount:2,category:'Category A'});
+  assert.equal(JSON.parse(h.w.localStorage.getItem('lexiSpendV2Calendar:2030-01')).savedAt,before);
+  h.setNow('2030-01-15T12:01:01Z');await h.a.loadCalendarMonth('2030-01');assert.equal(h.calls.length,2);
+  await h.a.loadCalendarMonth('2030-01',true);assert.equal(h.calls.length,3);
+});
+await check('Calendar saved launch paints before shared refresh and an uncached read starts without waiting for it',async()=>{
+  const h=harness();h.w.localStorage.setItem('lexiSpendV2ActiveView','calendar');
+  h.a.saveCalendarCache('2030-01',{...emptyMonth(),days:{'2030-01-15':{totalUsd:9,categories:{},transactions:[]}}});
+  let resolveShared;h.setHandler(name=>name==='getAppState'?new Promise(resolve=>resolveShared=resolve):Promise.resolve(emptyMonth()));
+  const starting=h.a.init();await turn();assert.equal(h.$('calendarGrid').children.length,42);
+  assert.equal(h.$('selectedDayTotal').textContent,'$9.00');assert.deepEqual(h.calls.map(c=>c[0]),['getAppState']);
+  resolveShared(clone(h.f));await starting;
+  const cold=harness();cold.w.localStorage.setItem('lexiSpendV2ActiveView','calendar');let finishShared,finishMonth;
+  cold.setHandler(name=>new Promise(resolve=>{if(name==='getAppState')finishShared=resolve;else finishMonth=resolve;}));
+  const start=cold.a.init();await turn();assert(finishShared);assert(finishMonth);assert.equal(cold.$('calendarGrid').children.length,42);
+  finishMonth(emptyMonth());await turn();assert.equal(cold.$('selectedDayTotal').textContent,'$0.00');finishShared(clone(cold.f));await start;
 });
 await check('older app-state response cannot overwrite a confirmed mutation',async()=>{
   const h=harness(),{a}=h;const pending=[];h.setHandler(()=>new Promise(resolve=>pending.push(resolve)));

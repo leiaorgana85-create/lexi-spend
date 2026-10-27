@@ -6,6 +6,7 @@
   const EXPENSE_CURRENCY_KEY = 'lexiSpendV2ExpenseCurrency';
   const CASH_CURRENCY_KEY = 'lexiSpendV2CashCurrency';
   const CALENDAR_CACHE_PREFIX = 'lexiSpendV2Calendar:';
+  const CALENDAR_FRESH_MS = 60000;
   const APP_STATE_CACHE_KEY = 'lexiSpendV2AppState';
   const PENDING_SAVES_KEY = 'lexiSpendV2PendingSaves';
   const pendingSaves = readJson(PENDING_SAVES_KEY) || {};
@@ -449,7 +450,7 @@
     renderCash();
     setLedgerButtons(state.busy);
     setText('settingsBackendVersion', state.app.appVersion || '—');
-    setText('settingsFrontendVersion', 'v2.2.4');
+    setText('settingsFrontendVersion', 'v2.2.5');
     renderOutboxStatus();
     if (persist) saveJson(APP_STATE_CACHE_KEY, { savedAt:Date.now(), confirmedAt:state.lastConfirmedAt, app:state.app });
   }
@@ -560,7 +561,11 @@
     document.querySelectorAll('.screen').forEach(screen => screen.classList.toggle('active', screen.dataset.screen === view));
     document.querySelectorAll('.lexi-tab').forEach(tab => tab.classList.toggle('active', tab.dataset.view === view));
     try { localStorage.setItem(VIEW_KEY, view); } catch (_) {}
-    if (loadCalendar && view === 'calendar') loadCalendarMonth(monthKey(state.calendarCursor));
+    if (view === 'calendar') {
+      const month = monthKey(state.calendarCursor);
+      renderCalendar(calendarCachedMonth(month));
+      if (loadCalendar) void loadCalendarMonth(month);
+    }
   }
 
   function readView() {
@@ -1227,7 +1232,6 @@
         }
         state.selectedDate = iso;
         renderCalendar(data);
-        renderDayDetails(data, iso);
       });
       host.appendChild(button);
     }
@@ -1242,7 +1246,7 @@
   function renderDayDetails(data, date) {
     setText('selectedDayTitle', new Date(`${date}T12:00:00`).toLocaleDateString(undefined, { weekday:'long', month:'short', day:'numeric' }));
     const day = data?.days?.[date] || { totalUsd:0, categories:{}, transactions:[] };
-    setText('selectedDayTotal', money(day.totalUsd));
+    setText('selectedDayTotal', data ? money(day.totalUsd) : '—');
     const chips = $('selectedDayCategories');
     chips.replaceChildren();
     Object.entries(day.categories || {}).sort((a,b) => b[1] - a[1]).forEach(([name,value]) => {
@@ -1255,7 +1259,7 @@
     list.replaceChildren();
     const rows = day.transactions || [];
     if (!rows.length) {
-      list.innerHTML = '<div class="list-empty">No spend.</div>';
+      list.innerHTML = data ? '<div class="list-empty">No spend.</div>' : '<div class="list-empty">Loading spend…</div>';
       return;
     }
     rows.forEach(tx => {
@@ -1282,14 +1286,18 @@
   async function loadCalendarMonth(month, force = false) {
     const isCurrentMonth = () => month === monthKey(state.calendarCursor);
     if (isCurrentMonth()) setText('calendarMonthTitle', monthTitle(state.calendarCursor));
-    if (!force) {
-      const memory = calendarCachedMonth(month);
-      if (memory && isCurrentMonth()) renderCalendar(memory);
-    }
-    if (isCurrentMonth() && state.activeView === 'calendar') setStatus('calendarStatus', 'Syncing…');
+    const memory = calendarCachedMonth(month);
+    if (isCurrentMonth()) renderCalendar(memory);
 
     const existing = state.calendarLoads.get(month);
     if (existing) return existing;
+    const savedAt = Number(readJson(calendarCacheKey(month))?.savedAt || 0);
+    const age = Date.now() - savedAt;
+    if (!force && memory && savedAt > 0 && age >= 0 && age < CALENDAR_FRESH_MS) {
+      if (isCurrentMonth()) setStatus('calendarStatus', '');
+      return memory;
+    }
+    if (isCurrentMonth() && state.activeView === 'calendar') setStatus('calendarStatus', 'Syncing…');
 
     const requestVersion = calendarVersion(month);
     let refreshAfterMutation = false;
@@ -1468,6 +1476,7 @@
     if (await SpendApi.hasCode()) {
       const hadPending = Object.keys(readOutbox()).length > 0;
       if (hadPending) await flushOutbox();
+      if (!hadPending && state.activeView === 'calendar') void loadCalendarMonth(monthKey(state.calendarCursor));
       const refreshed = hadPending ? false : await loadAppState(false);
       if (refreshed && state.activeView === 'calendar') void loadCalendarMonth(monthKey(state.calendarCursor));
     } else {
