@@ -14,6 +14,7 @@
   let targetOrigin = '';
   let readyPromise = null;
   let readyResolve = null;
+  let readyCancel = null;
   let nextId = 1;
   const pending = new Map();
   const calendarRefreshes = new Map();
@@ -152,6 +153,9 @@
   function resetBridge() {
     // Removing a frame with outstanding calls strands their acknowledgements.
     if (pending.size) return false;
+    // Readiness waiters have not entered pending yet; settle them before
+    // replacing their frame so callers can retry instead of waiting forever.
+    readyCancel?.();
     try { frame?.remove(); } catch (_) {}
     frame = null;
     target = null;
@@ -172,11 +176,18 @@
         if (target && targetOrigin) return;
         readyPromise = null;
         readyResolve = null;
+        readyCancel = null;
         reject(new Error('Could not connect to the Lexi Spend backend.'));
       }, READY_TIMEOUT_MS);
 
+      readyCancel = () => {
+        clearTimeout(timer);
+        readyCancel = null;
+        reject(new Error('Lexi Spend backend connection reset.'));
+      };
       readyResolve = () => {
         clearTimeout(timer);
+        readyCancel = null;
         resolve();
       };
     });

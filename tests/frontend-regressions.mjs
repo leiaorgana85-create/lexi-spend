@@ -54,6 +54,23 @@ function harness({ realApi=false, savedPending=null, savedCurrency=null, savedCa
 let passed=0;
 async function check(name,fn){await fn();passed++;console.log(`PASS ${name}`);}
 try {
+await check('reset during bridge readiness settles waiting refresh and permits retry',async()=>{
+  const {w,a,$,f}=harness({realApi:true});
+  w.localStorage.setItem('lexiSpendPrivateApiCodeV1','fixture-code');
+  const timers=[];w.setTimeout=fn=>{timers.push(fn);return timers.length;};w.clearTimeout=()=>{};
+  const messages=[],target={postMessage:message=>messages.push(message)};
+  const reply=data=>w.dispatchEvent(new w.MessageEvent('message',{origin:'https://script.googleusercontent.com',source:target,data}));
+  const refresh=a.loadAppState(false);await turn();
+  assert.equal(a.state.syncing,true);assert.equal(messages.length,0);
+  assert.equal(w.SpendApi.resetBridge(),true);await turn();
+  // Let the refresh catch the reset and run its existing one-time retry delay.
+  for(const timer of timers.slice(1))timer();await turn();
+  reply({type:'lexi-spend-bridge-ready'});await turn();
+  assert.equal(messages.length,1,'the waiting refresh must retry instead of remaining stranded');
+  reply({type:'lexi-spend-result',id:messages[0].id,ok:true,result:clone(f)});
+  assert.equal(await refresh,true);assert.equal(a.state.syncing,false);
+  assert.equal($('connectionBadge').textContent,'Connected');
+});
 await check('FX coalesces concurrent amounts, calculates locally at full rate precision, persists and separates dates',async()=>{
   const h=harness({realApi:true}),{w}=h;
   w.localStorage.setItem('lexiSpendPrivateApiCodeV1','fixture-code');
