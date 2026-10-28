@@ -15,5 +15,7 @@ jobs:
         with:
           node-version: '22'
           cache: npm
+      - name: Check visible app version
+        run: node scripts/check-version.cjs
       - run: npm ci --ignore-scripts --no-audit --no-fund
       - run: npm test

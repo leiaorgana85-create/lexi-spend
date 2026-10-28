@@ -1,0 +1,7 @@
+{
+  "version": "2026.10.27.1",
+  "repository": "leiaorgana85-create/lexi-spend",
+  "url": "https://leiaorgana85-create.github.io/lexi-spend/v2/",
+  "html": "v2/index.html",
+  "worker": "v2/sw.js"
+}
