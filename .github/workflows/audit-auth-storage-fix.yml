@@ -1,0 +1,164 @@
+name: Apply audited auth-storage fix
+on:
+  push:
+    branches: [audit/auth-storage-v1.03]
+permissions:
+  contents: write
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: audit/auth-storage-v1.03
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Reproduce, patch, and verify
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > tests/auth-storage-regression.mjs <<'TEST'
+          import assert from 'node:assert/strict';
+          import fs from 'node:fs';
+          import vm from 'node:vm';
+
+          const source = fs.readFileSync(process.env.SPEND_API_SOURCE || 'v2/api.js', 'utf8');
+
+          function harness(localCode = '') {
+            const values = new Map();
+            if (localCode) values.set('lexiSpendPrivateApiCodeV1', localCode);
+            const timers = [];
+            let deletedDatabases = 0;
+            const localStorage = {
+              getItem:key => values.has(key) ? values.get(key) : null,
+              setItem:(key,value) => values.set(key, String(value)),
+              removeItem:key => values.delete(key)
+            };
+            const body = { appendChild(node) { node.isConnected = true; } };
+            const document = {
+              body,
+              createElement() {
+                return {
+                  id:'', title:'', src:'', isConnected:false,
+                  style:{}, setAttribute(){}, remove(){ this.isConnected = false; }
+                };
+              }
+            };
+            const window = { document, localStorage, addEventListener(){} };
+            const indexedDB = {
+              open() { return {}; },
+              deleteDatabase() { deletedDatabases++; return {}; }
+            };
+            const context = {
+              window, document, localStorage, indexedDB,
+              navigator:{ onLine:true }, URL,
+              setTimeout(fn, ms) { const item={fn,ms,cleared:false}; timers.push(item); return item; },
+              clearTimeout(item) { if (item) item.cleared = true; },
+              console
+            };
+            context.globalThis = context;
+            vm.runInNewContext(source, context, { filename:'v2/api.js' });
+            return { window, timers, values, deletedDatabases:() => deletedDatabases };
+          }
+
+          {
+            const h = harness();
+            const pending = h.window.SpendApi.hasCode();
+            await Promise.resolve();
+            const deadline = h.timers.find(timer => timer.ms === 5000 && !timer.cleared);
+            assert.ok(deadline, 'authorization storage lookup must have a 5-second deadline');
+            deadline.fn();
+            assert.equal(await pending, false, 'a wedged IndexedDB fallback must settle as not connected');
+            assert.equal(h.deletedDatabases(), 0, 'timeout must not delete authorization storage');
+            assert.equal(h.values.size, 0, 'timeout must not invent or clear local authorization');
+          }
+
+          {
+            const h = harness('saved-code');
+            assert.equal(await h.window.SpendApi.hasCode(), true, 'local authorization remains the immediate fast path');
+            assert.equal(h.timers.some(timer => timer.ms === 5000 && !timer.cleared), false, 'local authorization must not wait on IndexedDB');
+            assert.equal(h.values.get('lexiSpendPrivateApiCodeV1'), 'saved-code');
+          }
+
+          console.log('PASS bounded authorization storage fallback');
+          TEST
+
+          if node tests/auth-storage-regression.mjs; then
+            echo 'ERROR: v1.02 unexpectedly passed the new stuck-auth regression' >&2
+            exit 1
+          else
+            echo 'Reproduced v1.02 unbounded authorization-storage path as expected'
+          fi
+
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_exact(path, old, new, count=1):
+              p = Path(path)
+              text = p.read_text()
+              actual = text.count(old)
+              if actual != count:
+                  raise SystemExit(f'{path}: expected {count} exact matches, found {actual}')
+              p.write_text(text.replace(old, new, count))
+
+          api = Path('v2/api.js')
+          text = api.read_text()
+          old = """  const REQUEST_TIMEOUT_MS = 120000;\n  const READY_TIMEOUT_MS = 20000;\n"""
+          new = """  const REQUEST_TIMEOUT_MS = 120000;\n  const READY_TIMEOUT_MS = 20000;\n  const AUTH_STORAGE_TIMEOUT_MS = 5000;\n"""
+          if text.count(old) != 1:
+              raise SystemExit('v2/api.js timeout constants baseline mismatch')
+          text = text.replace(old, new, 1)
+
+          old = """  function openAuthDb() {\n    return new Promise((resolve, reject) => {\n      if (!('indexedDB' in window)) {\n        reject(new Error('IndexedDB unavailable.'));\n        return;\n      }\n      const request = indexedDB.open(AUTH_DB, 1);\n      request.onupgradeneeded = () => {\n        const db = request.result;\n        if (!db.objectStoreNames.contains(AUTH_STORE)) {\n          db.createObjectStore(AUTH_STORE);\n        }\n      };\n      request.onsuccess = () => resolve(request.result);\n      request.onerror = () => reject(request.error || new Error('Could not open authorization storage.'));\n    });\n  }\n"""
+          new = """  function openAuthDb() {\n    return new Promise((resolve, reject) => {\n      if (!('indexedDB' in window)) {\n        reject(new Error('IndexedDB unavailable.'));\n        return;\n      }\n      const request = indexedDB.open(AUTH_DB, 1);\n      let settled = false;\n      const timer = setTimeout(() => {\n        if (settled) return;\n        settled = true;\n        reject(new Error('Authorization storage timed out.'));\n      }, AUTH_STORAGE_TIMEOUT_MS);\n      request.onupgradeneeded = () => {\n        const db = request.result;\n        if (!db.objectStoreNames.contains(AUTH_STORE)) {\n          db.createObjectStore(AUTH_STORE);\n        }\n      };\n      request.onsuccess = () => {\n        if (settled) {\n          try { request.result?.close(); } catch (_) {}\n          return;\n        }\n        settled = true;\n        clearTimeout(timer);\n        resolve(request.result);\n      };\n      request.onerror = () => {\n        if (settled) return;\n        settled = true;\n        clearTimeout(timer);\n        reject(request.error || new Error('Could not open authorization storage.'));\n      };\n    });\n  }\n"""
+          if text.count(old) != 1:
+              raise SystemExit('v2/api.js openAuthDb baseline mismatch')
+          text = text.replace(old, new, 1)
+
+          old = """  async function readIndexedAuth() {\n    try {\n      const db = await openAuthDb();\n      return await new Promise((resolve, reject) => {\n        const tx = db.transaction(AUTH_STORE, 'readonly');\n        const request = tx.objectStore(AUTH_STORE).get(AUTH_DB_KEY);\n        request.onsuccess = () => resolve(String(request.result || '').trim());\n        request.onerror = () => reject(request.error || new Error('Could not read authorization storage.'));\n        tx.oncomplete = () => db.close();\n        tx.onerror = () => db.close();\n        tx.onabort = () => db.close();\n      });\n    } catch (_) {\n      return '';\n    }\n  }\n"""
+          new = """  async function readIndexedAuth() {\n    let db = null;\n    try {\n      db = await openAuthDb();\n      return await new Promise((resolve, reject) => {\n        const tx = db.transaction(AUTH_STORE, 'readonly');\n        const request = tx.objectStore(AUTH_STORE).get(AUTH_DB_KEY);\n        let settled = false;\n        const finish = (fn, value) => {\n          if (settled) return;\n          settled = true;\n          clearTimeout(timer);\n          try { db.close(); } catch (_) {}\n          fn(value);\n        };\n        const timer = setTimeout(() => {\n          try { tx.abort(); } catch (_) {}\n          finish(reject, new Error('Authorization storage read timed out.'));\n        }, AUTH_STORAGE_TIMEOUT_MS);\n        request.onsuccess = () => finish(resolve, String(request.result || '').trim());\n        request.onerror = () => finish(reject, request.error || new Error('Could not read authorization storage.'));\n        tx.onerror = () => finish(reject, tx.error || new Error('Could not read authorization storage.'));\n        tx.onabort = () => finish(reject, tx.error || new Error('Authorization storage read aborted.'));\n      });\n    } catch (_) {\n      try { db?.close(); } catch (_) {}\n      return '';\n    }\n  }\n"""
+          if text.count(old) != 1:
+              raise SystemExit('v2/api.js readIndexedAuth baseline mismatch')
+          text = text.replace(old, new, 1)
+
+          old = """  async function writeIndexedAuth(code) {\n    try {\n      const db = await openAuthDb();\n      await new Promise((resolve, reject) => {\n        const tx = db.transaction(AUTH_STORE, 'readwrite');\n        tx.objectStore(AUTH_STORE).put(code, AUTH_DB_KEY);\n        tx.oncomplete = resolve;\n        tx.onerror = () => reject(tx.error || new Error('Could not save authorization storage.'));\n        tx.onabort = () => reject(tx.error || new Error('Could not save authorization storage.'));\n      });\n      db.close();\n      return true;\n    } catch (_) {\n      return false;\n    }\n  }\n"""
+          new = """  async function writeIndexedAuth(code) {\n    let db = null;\n    try {\n      db = await openAuthDb();\n      await new Promise((resolve, reject) => {\n        const tx = db.transaction(AUTH_STORE, 'readwrite');\n        let settled = false;\n        const finish = (fn, value) => {\n          if (settled) return;\n          settled = true;\n          clearTimeout(timer);\n          try { db.close(); } catch (_) {}\n          fn(value);\n        };\n        const timer = setTimeout(() => {\n          try { tx.abort(); } catch (_) {}\n          finish(reject, new Error('Authorization storage write timed out.'));\n        }, AUTH_STORAGE_TIMEOUT_MS);\n        tx.objectStore(AUTH_STORE).put(code, AUTH_DB_KEY);\n        tx.oncomplete = () => finish(resolve);\n        tx.onerror = () => finish(reject, tx.error || new Error('Could not save authorization storage.'));\n        tx.onabort = () => finish(reject, tx.error || new Error('Authorization storage write aborted.'));\n      });\n      return true;\n    } catch (_) {\n      try { db?.close(); } catch (_) {}\n      return false;\n    }\n  }\n"""
+          if text.count(old) != 1:
+              raise SystemExit('v2/api.js writeIndexedAuth baseline mismatch')
+          text = text.replace(old, new, 1)
+
+          old = """  async function deleteIndexedAuth() {\n    try {\n      const db = await openAuthDb();\n      await new Promise((resolve, reject) => {\n        const tx = db.transaction(AUTH_STORE, 'readwrite');\n        tx.objectStore(AUTH_STORE).delete(AUTH_DB_KEY);\n        tx.oncomplete = resolve;\n        tx.onerror = () => reject(tx.error || new Error('Could not clear authorization storage.'));\n        tx.onabort = () => reject(tx.error || new Error('Could not clear authorization storage.'));\n      });\n      db.close();\n    } catch (_) {}\n  }\n"""
+          new = """  async function deleteIndexedAuth() {\n    let db = null;\n    try {\n      db = await openAuthDb();\n      await new Promise((resolve, reject) => {\n        const tx = db.transaction(AUTH_STORE, 'readwrite');\n        let settled = false;\n        const finish = (fn, value) => {\n          if (settled) return;\n          settled = true;\n          clearTimeout(timer);\n          try { db.close(); } catch (_) {}\n          fn(value);\n        };\n        const timer = setTimeout(() => {\n          try { tx.abort(); } catch (_) {}\n          finish(reject, new Error('Authorization storage delete timed out.'));\n        }, AUTH_STORAGE_TIMEOUT_MS);\n        tx.objectStore(AUTH_STORE).delete(AUTH_DB_KEY);\n        tx.oncomplete = () => finish(resolve);\n        tx.onerror = () => finish(reject, tx.error || new Error('Could not clear authorization storage.'));\n        tx.onabort = () => finish(reject, tx.error || new Error('Authorization storage delete aborted.'));\n      });\n    } catch (_) {\n      try { db?.close(); } catch (_) {}\n    }\n  }\n"""
+          if text.count(old) != 1:
+              raise SystemExit('v2/api.js deleteIndexedAuth baseline mismatch')
+          api.write_text(text.replace(old, new, 1))
+
+          replace_exact('version.json', '"version": "v1.02"', '"version": "v1.03"')
+          replace_exact('v2/index.html', 'data-app-version="v1.02"', 'data-app-version="v1.03"')
+          replace_exact('v2/index.html', 'data-version="v1.02"', 'data-version="v1.03"')
+          replace_exact('v2/index.html', '<span id="settingsFrontendVersion">v1.02</span>', '<span id="settingsFrontendVersion">v1.03</span>')
+          replace_exact('v2/app.js', "setText('settingsFrontendVersion', 'v1.02');", "setText('settingsFrontendVersion', 'v1.03');")
+          replace_exact('v2/sw.js', '// App version: v1.02', '// App version: v1.03')
+          replace_exact('v2/sw.js', "const CACHE_NAME = `${CACHE_PREFIX}shell-v50`;", "const CACHE_NAME = `${CACHE_PREFIX}shell-v51`;")
+          replace_exact('package.json', 'node tests/backend-contract.cjs && node tests/actual-usd-backend.cjs && node tests/frontend-regressions.mjs', 'node tests/backend-contract.cjs && node tests/actual-usd-backend.cjs && node tests/auth-storage-regression.mjs && node tests/frontend-regressions.mjs')
+          PY
+
+          node scripts/check-version.cjs
+          npm ci --ignore-scripts --no-audit --no-fund
+          npm test
+          rm -rf /tmp/spend-prev && mkdir -p /tmp/spend-prev/v2
+          git show ede5717ab3a43a39bb52eb86318561d6b9568d91:v2/index.html > /tmp/spend-prev/v2/index.html
+          SPEND_HTML_ROOT=/tmp/spend-prev node tests/frontend-regressions.mjs
+          for file in *.js *.gs v2/*.js; do node --check < "$file"; done
+          git diff --check
+          rm .github/workflows/audit-auth-storage-fix.yml
+          git status --short
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'Bound auth storage waits; release v1.03'
+          git push origin HEAD:audit/auth-storage-v1.03
