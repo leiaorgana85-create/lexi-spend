@@ -308,6 +308,10 @@
     return Math.round((Number(value || 0) + Number.EPSILON) * 100) / 100;
   }
 
+  function budgetReconciliationActive() {
+    return document.body?.dataset?.activeView === 'budget';
+  }
+
   async function reconcileWeeklyBudgetSummary(summary, options = {}) {
     if (!summary?.weekStart || !summary?.weekEnd) return summary;
 
@@ -343,7 +347,7 @@
   }
 
   async function reconcileBudgetResult(functionName, result, options = {}) {
-    if (!result?.summary || !['getAppState', 'logExpense', 'deleteExpense'].includes(functionName)) {
+    if (!budgetReconciliationActive() || !result?.summary || !['getAppState', 'logExpense', 'deleteExpense'].includes(functionName)) {
       return result;
     }
     try {
