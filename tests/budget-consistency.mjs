@@ -83,7 +83,7 @@ function apiHarness(activeView) {
   await turn();
   assert.equal(messages.length,2,'Budget adds one authoritative Calendar read');
   assert.equal(messages[1].functionName,'getCalendarMonth');
-  assert.deepEqual(messages[1].parameters,['2030-01']);
+  assert.equal(JSON.stringify(messages[1].parameters),JSON.stringify(['2030-01']));
   reply({type:'lexi-spend-result',id:messages[1].id,ok:true,result:calendarState()});
   const result = await pending;
   assert.equal(result.summary.weeklyTotal,30,'weekly spend uses only budgeted categories');
