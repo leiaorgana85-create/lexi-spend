@@ -1,0 +1,120 @@
+name: Audit v1.04 startup pending-state patch
+
+on:
+  push:
+    branches:
+      - audit/startup-pending-status-v1.04
+
+permissions:
+  contents: write
+
+jobs:
+  patch-and-verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20.19.0'
+      - name: Install test dependencies
+        run: npm ci --ignore-scripts
+      - name: Verify v1.03 baseline tests pass
+        run: npm test
+      - name: Add regression only
+        shell: python
+        run: |
+          from pathlib import Path
+          p = Path('tests/frontend-regressions.mjs')
+          s = p.read_text()
+          marker = "await check('resume cannot remove a pending sync transport; new entries remain usable while flushing',async()=>{"
+          assert marker in s, 'startup regression insertion marker missing'
+          assert 'startup deferred pending queue cannot remain bare Syncing' not in s, 'regression already present'
+          test = r'''await check('startup deferred pending queue cannot remain bare Syncing',async()=>{
+            const queued={'logExpense:e1':{name:'logExpense',params:[{entryId:'e1',date:'2030-01-15',merchant:'Example',currency:'THB',amount:10}],affectedDate:'2030-01-15',token:'t1'}};
+            const h=harness({savedOutbox:JSON.stringify(queued)});
+            h.w.localStorage.setItem('lexiSpendV2AppState',JSON.stringify({savedAt:1,confirmedAt:1,app:clone(h.f)}));
+            Object.defineProperty(h.w.document,'visibilityState',{configurable:true,value:'hidden'});
+            let writes=0;
+            h.setHandler(async name=>{if(name==='logExpense')writes++;return name==='getAppState'?clone(h.f):{deduped:true};});
+            await h.a.init();
+            assert.equal(writes,0,'hidden startup must defer the queued write');
+            assert.equal(Object.keys(h.a.readOutbox()).length,1,'pending payload and stable ID must remain durable');
+            assert.equal(h.$('connectionBadge').textContent,'1 pending');
+            assert.equal(h.$('settingsConnection').textContent,'1 pending');
+          });
+          '''
+          p.write_text(s.replace(marker, test + marker, 1))
+      - name: Prove new regression fails on v1.03
+        shell: bash
+        run: |
+          set +e
+          node tests/frontend-regressions.mjs > /tmp/v103-regression.log 2>&1
+          rc=$?
+          set -e
+          cat /tmp/v103-regression.log
+          if [ "$rc" -eq 0 ]; then
+            echo 'ERROR: v1.03 unexpectedly passed the new startup regression.' >&2
+            exit 1
+          fi
+          grep -q "actual: 'Syncing'" /tmp/v103-regression.log || {
+            echo 'ERROR: regression failed for an unexpected reason.' >&2
+            exit 1
+          }
+          echo 'CONFIRMED: v1.03 leaves the cached startup badge at bare Syncing when a pending queue is deferred.'
+      - name: Apply narrow v1.04 repair
+        shell: python
+        run: |
+          from pathlib import Path
+
+          p = Path('v2/app.js')
+          s = p.read_text()
+          old = """      const hadPending = Object.keys(readOutbox()).length > 0;
+              if (hadPending) await flushOutbox();
+              if (!hadPending && state.activeView === 'calendar') void loadCalendarMonth(monthKey(state.calendarCursor));
+          """
+          # The same lifecycle pattern appears in init with different following text;
+          # replace the exact await line in both resume and init, without changing queue ordering.
+          needle = "      if (hadPending) await flushOutbox();"
+          assert s.count(needle) == 2, f'expected two lifecycle pending-flush sites, got {s.count(needle)}'
+          s = s.replace(needle, "      if (hadPending) { await flushOutbox(); renderOutboxStatus(); }")
+          assert s.count("setText('settingsFrontendVersion', 'v1.03');") == 1
+          s = s.replace("setText('settingsFrontendVersion', 'v1.03');", "setText('settingsFrontendVersion', 'v1.04');")
+          p.write_text(s)
+
+          p = Path('v2/index.html')
+          s = p.read_text()
+          assert s.count('v1.03') == 3, f'expected 3 v1.03 markers in index, got {s.count("v1.03")}'
+          p.write_text(s.replace('v1.03','v1.04'))
+
+          p = Path('v2/sw.js')
+          s = p.read_text()
+          assert s.count('v1.03') == 1
+          assert s.count('shell-v51') == 1
+          s = s.replace('v1.03','v1.04').replace('shell-v51','shell-v52')
+          p.write_text(s)
+
+          p = Path('version.json')
+          s = p.read_text()
+          assert s.count('v1.03') == 1
+          p.write_text(s.replace('v1.03','v1.04'))
+      - name: Verify complete candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm test
+          node scripts/check-version.cjs
+          for file in *.js *.gs v2/*.js; do node --check < "$file"; done
+          git diff --check
+          git diff -- v2/app.js tests/frontend-regressions.mjs v2/index.html v2/sw.js version.json
+      - name: Commit verified candidate and remove temporary workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm .github/workflows/audit-v104-patch.yml
+          git config user.name 'leiaorgana85-create'
+          git config user.email '330578857+leiaorgana85-create@users.noreply.github.com'
+          git add -A
+          git commit -m 'Settle deferred pending startup status; release v1.04'
+          git push origin "HEAD:${GITHUB_REF_NAME}"
