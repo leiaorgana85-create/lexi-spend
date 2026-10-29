@@ -6,7 +6,7 @@ permissions:
   contents: write
 jobs:
   patch-and-test:
-    if: github.actor != 'github-actions[bot]'
+    if: ${{ github.actor != 'github-actions[bot]' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -118,10 +118,9 @@ const actions = { prepend(n){ nodes.set(n.id, n); } };
 nodes.set('connectionBadge', node('connectionBadge'));
 nodes.set('settingsConnection', node('settingsConnection'));
 nodes.set('settingsDialog', node('settingsDialog'));
-let frame = null;
 const document = {
   readyState:'complete', visibilityState:'visible',
-  body:{ appendChild(n){ n.isConnected=true; if(n.id==='lexiSpendV2ApiBridge') frame=n; } },
+  body:{ appendChild(n){ n.isConnected=true; } },
   createElement(tag){ return node(tag); },
   getElementById(id){ return nodes.get(id) || null; },
   addEventListener(type, fn){ listeners.set('document:'+type, fn); }
