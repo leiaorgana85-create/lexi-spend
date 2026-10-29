@@ -9,6 +9,7 @@
   const AUTH_DB_KEY = 'apiCode';
   const REQUEST_TIMEOUT_MS = 120000;
   const READY_TIMEOUT_MS = 20000;
+  const AUTH_STORAGE_TIMEOUT_MS = 5000;
   let frame = null;
   let target = null;
   let targetOrigin = '';
@@ -54,7 +55,7 @@
     });
   }
 
-  async function readIndexedAuth() {
+  async function readIndexedAuthUnbounded() {
     try {
       const db = await openAuthDb();
       return await new Promise((resolve, reject) => {
@@ -71,7 +72,7 @@
     }
   }
 
-  async function writeIndexedAuth(code) {
+  async function writeIndexedAuthUnbounded(code) {
     try {
       const db = await openAuthDb();
       await new Promise((resolve, reject) => {
@@ -88,7 +89,7 @@
     }
   }
 
-  async function deleteIndexedAuth() {
+  async function deleteIndexedAuthUnbounded() {
     try {
       const db = await openAuthDb();
       await new Promise((resolve, reject) => {
@@ -100,6 +101,33 @@
       });
       db.close();
     } catch (_) {}
+  }
+
+  function authStorageDeadline(value) {
+    return new Promise(resolve => {
+      setTimeout(() => resolve(value), AUTH_STORAGE_TIMEOUT_MS);
+    });
+  }
+
+  function readIndexedAuth() {
+    return Promise.race([
+      readIndexedAuthUnbounded(),
+      authStorageDeadline('')
+    ]);
+  }
+
+  function writeIndexedAuth(code) {
+    return Promise.race([
+      writeIndexedAuthUnbounded(code),
+      authStorageDeadline(false)
+    ]);
+  }
+
+  function deleteIndexedAuth() {
+    return Promise.race([
+      deleteIndexedAuthUnbounded(),
+      authStorageDeadline(undefined)
+    ]);
   }
 
   async function readCode() {
