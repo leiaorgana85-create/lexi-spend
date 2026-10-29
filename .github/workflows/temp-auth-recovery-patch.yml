@@ -1,0 +1,193 @@
+name: Temporary Spend auth-recovery patch
+on:
+  push:
+    branches: [fix/spend-backend-auth-recovery-v105]
+permissions:
+  contents: write
+jobs:
+  patch-and-test:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/spend-backend-auth-recovery-v105
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Apply narrow frontend patch
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace_exact(path, old, new, expected=1):
+              p=Path(path); s=p.read_text()
+              n=s.count(old)
+              assert n == expected, f'{path}: expected {expected} matches, found {n}'
+              p.write_text(s.replace(old,new))
+
+          api=Path('v2/api.js')
+          s=api.read_text()
+          marker="  function waitReady() {\n"
+          assert s.count(marker)==1
+          helper=r'''  let backendRecoveryActive = false;
+
+  function setBackendRecoveryPrompt(show) {
+    backendRecoveryActive = Boolean(show);
+    const apply = () => {
+      const badge = document.getElementById?.('connectionBadge');
+      const settings = document.getElementById?.('settingsConnection');
+      const dialog = document.getElementById?.('settingsDialog');
+      let button = document.getElementById?.('backendAuthorizationButton');
+      if (!button && dialog) {
+        button = document.createElement('button');
+        button.id = 'backendAuthorizationButton';
+        button.type = 'button';
+        button.className = 'ghost-button';
+        button.textContent = 'Authorize backend';
+        button.addEventListener('click', () => {
+          window.open?.(BACKEND_URL, '_blank', 'noopener,noreferrer');
+        });
+        const actions = dialog.querySelector?.('.dialog-actions');
+        if (actions?.prepend) actions.prepend(button);
+        else dialog.querySelector?.('.dialog-body')?.appendChild?.(button);
+      }
+      if (button) button.hidden = !show;
+      if (!show) return;
+      if (badge) {
+        badge.textContent = 'Authorization needed';
+        badge.className = 'status-badge error';
+      }
+      if (settings) settings.textContent = 'Backend access may need authorization';
+    };
+    if (document.readyState === 'loading' && document.addEventListener) {
+      document.addEventListener('DOMContentLoaded', apply, { once:true });
+    } else apply();
+  }
+
+'''
+          s=s.replace(marker, helper+marker)
+          old="""        reject(new Error('Could not connect to the Lexi Spend backend.'));\n"""
+          new="""        const error = new Error('Backend access may need authorization.');\n        error.code = 'BACKEND_AUTHORIZATION_REQUIRED';\n        reject(error);\n        setTimeout(() => setBackendRecoveryPrompt(true), 0);\n"""
+          assert s.count(old)==1
+          s=s.replace(old,new)
+          old_ready="""      readyResolve?.();\n      readyPromise = Promise.resolve();\n"""
+          new_ready="""      readyResolve?.();\n      setBackendRecoveryPrompt(false);\n      readyPromise = Promise.resolve();\n"""
+          assert s.count(old_ready)==1
+          s=s.replace(old_ready,new_ready)
+          tail="""  ensureFrame();\n\n  window.SpendApi = Object.freeze({\n"""
+          replacement="""  document.addEventListener?.('visibilitychange', () => {\n    if (document.visibilityState !== 'visible' || !backendRecoveryActive || pending.size) return;\n    resetBridge();\n    setTimeout(() => window.dispatchEvent?.(new Event('online')), 250);\n  });\n\n  ensureFrame();\n\n  window.SpendApi = Object.freeze({\n"""
+          assert s.count(tail)==1
+          s=s.replace(tail,replacement)
+          api.write_text(s)
+
+          replace_exact('v2/app.js', "setText('settingsFrontendVersion', 'v1.04');", "setText('settingsFrontendVersion', 'v1.05');")
+          replace_exact('v2/index.html', 'v1.04', 'v1.05', 3)
+          replace_exact('v2/sw.js', '// App version: v1.04', '// App version: v1.05')
+          replace_exact('v2/sw.js', 'shell-v52', 'shell-v53')
+          replace_exact('version.json', '"version": "v1.04"', '"version": "v1.05"')
+
+          test=Path('tests/backend-authorization-recovery.mjs')
+          test.write_text(r'''import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import vm from 'node:vm';
+
+const source = fs.readFileSync('v2/api.js', 'utf8');
+const BACKEND_URL = 'https://script.google.com/macros/s/AKfycby084l1Rupc838tdinecb2J5NCdOurkIa-smKFJqhypYINd_5walm15NLMWH7vSPWrA/exec';
+const timers = [];
+const listeners = new Map();
+const nodes = new Map();
+let opened = '';
+
+function node(id='') {
+  const handlers = new Map();
+  return {
+    id, textContent:'', className:'', hidden:false, type:'', isConnected:false, style:{},
+    setAttribute(){}, remove(){ this.isConnected=false; },
+    addEventListener(type, fn){ handlers.set(type, fn); },
+    click(){ handlers.get('click')?.(); },
+    querySelector(selector){
+      if (id === 'settingsDialog' && selector === '.dialog-actions') return actions;
+      return null;
+    }
+  };
+}
+const actions = { prepend(n){ nodes.set(n.id, n); } };
+nodes.set('connectionBadge', node('connectionBadge'));
+nodes.set('settingsConnection', node('settingsConnection'));
+nodes.set('settingsDialog', node('settingsDialog'));
+let frame = null;
+const document = {
+  readyState:'complete', visibilityState:'visible',
+  body:{ appendChild(n){ n.isConnected=true; if(n.id==='lexiSpendV2ApiBridge') frame=n; } },
+  createElement(tag){ return node(tag); },
+  getElementById(id){ return nodes.get(id) || null; },
+  addEventListener(type, fn){ listeners.set('document:'+type, fn); }
+};
+const values = new Map([['lexiSpendPrivateApiCodeV1','saved-code']]);
+const localStorage = { getItem:k=>values.get(k) ?? null, setItem:(k,v)=>values.set(k,String(v)), removeItem:k=>values.delete(k) };
+const window = {
+  document, localStorage,
+  addEventListener(type, fn){ listeners.set('window:'+type, fn); },
+  dispatchEvent(){},
+  open(url){ opened=url; }
+};
+const context = {
+  window, document, localStorage, indexedDB:{open(){return {}; }}, navigator:{onLine:true}, URL, console,
+  Event: class Event { constructor(type){this.type=type;} },
+  setTimeout(fn,ms){ const t={fn,ms,cleared:false}; timers.push(t); return t; },
+  clearTimeout(t){ if(t)t.cleared=true; }
+};
+context.globalThis=context;
+vm.runInNewContext(source, context, {filename:'v2/api.js'});
+
+const pending = window.SpendApi.call('getAppState', []);
+await Promise.resolve();
+const readyTimer = timers.find(t => t.ms === 20000 && !t.cleared);
+assert.ok(readyTimer, 'backend readiness must remain bounded');
+readyTimer.fn();
+await assert.rejects(pending, /Backend access may need authorization/);
+const promptTimer = timers.find(t => t.ms === 0 && !t.cleared);
+assert.ok(promptTimer, 'authorization recovery prompt must be scheduled after readiness failure');
+promptTimer.fn();
+assert.equal(nodes.get('connectionBadge').textContent, 'Authorization needed');
+assert.equal(nodes.get('settingsConnection').textContent, 'Backend access may need authorization');
+const button = nodes.get('backendAuthorizationButton');
+assert.ok(button && !button.hidden, 'one-tap authorization button must appear in Settings');
+button.click();
+assert.equal(opened, BACKEND_URL, 'recovery button must open the existing deployed backend URL');
+assert.equal(values.get('lexiSpendPrivateApiCodeV1'), 'saved-code', 'backend authorization recovery must not clear the private API code');
+
+const sourceWindow = {};
+listeners.get('window:message')({data:{type:'lexi-spend-bridge-ready'}, source:sourceWindow, origin:'https://script.google.com'});
+assert.equal(button.hidden, true, 'recovery button must hide once the bridge is ready again');
+console.log('PASS backend authorization recovery');
+''')
+
+          package=Path('package.json')
+          ps=package.read_text()
+          old='node tests/auth-storage-regression.mjs && node tests/frontend-regressions.mjs'
+          new='node tests/auth-storage-regression.mjs && node tests/backend-authorization-recovery.mjs && node tests/frontend-regressions.mjs'
+          assert ps.count(old)==1
+          package.write_text(ps.replace(old,new))
+          PY
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - run: npm test
+      - run: node scripts/check-version.cjs
+      - name: Syntax and diff checks
+        run: |
+          node --check v2/api.js
+          node --check v2/app.js
+          node --check v2/sw.js
+          node --check tests/backend-authorization-recovery.mjs
+          git diff --check
+          git diff -- v2/api.js v2/app.js v2/index.html v2/sw.js version.json package.json tests/backend-authorization-recovery.mjs
+      - name: Commit tested candidate
+        run: |
+          git config user.name 'leiaorgana85-create'
+          git config user.email '330578857+leiaorgana85-create@users.noreply.github.com'
+          git add v2/api.js v2/app.js v2/index.html v2/sw.js version.json package.json tests/backend-authorization-recovery.mjs
+          git commit -m 'Handle backend authorization recovery; release v1.05'
+          git push origin HEAD:fix/spend-backend-auth-recovery-v105
