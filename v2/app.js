@@ -450,7 +450,7 @@
     renderCash();
     setLedgerButtons(state.busy);
     setText('settingsBackendVersion', state.app.appVersion || '—');
-    setText('settingsFrontendVersion', 'v1.01');
+    setText('settingsFrontendVersion', 'v1.02');
     renderOutboxStatus();
     if (persist) saveJson(APP_STATE_CACHE_KEY, { savedAt:Date.now(), confirmedAt:state.lastConfirmedAt, app:state.app });
   }
@@ -795,12 +795,14 @@
   }
 
   function flushOutbox(retryBlocked = false) {
-    if (outboxFlight || state.busy || navigator.onLine === false || document.visibilityState === 'hidden') return outboxFlight || Promise.resolve();
+    // Let an active full read settle before a scheduled queue retry changes
+    // ledgerVersion. Otherwise repeated retries can starve every slow read.
+    if (outboxFlight || state.busy || state.syncing || navigator.onLine === false || document.visibilityState === 'hidden') return outboxFlight || Promise.resolve();
     if (!Object.keys(readOutbox()).length) return Promise.resolve();
     const changedMonths = new Set();
     let acknowledged = false;
     outboxFlight = (async () => {
-      if (!await SpendApi.hasCode() || state.busy) return;
+      if (!await SpendApi.hasCode() || state.busy || state.syncing) return;
       state.flushing = true;
       state.ledgerVersion++;
       renderOutboxStatus();

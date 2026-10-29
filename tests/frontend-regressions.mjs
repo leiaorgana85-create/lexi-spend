@@ -71,6 +71,45 @@ await check('reset during bridge readiness settles waiting refresh and permits r
   assert.equal(await refresh,true);assert.equal(a.state.syncing,false);
   assert.equal($('connectionBadge').textContent,'Connected');
 });
+await check('automatic outbox retries cannot starve an in-flight full refresh',async()=>{
+  const queued={'logExpense:e1':{name:'logExpense',params:[{entryId:'e1',date:'2030-01-15',merchant:'Example',amount:10}],token:'t1',blocked:true,error:'Invalid category'}};
+  const h=harness({savedOutbox:JSON.stringify(queued)});h.a.bind();
+  const reads=[];h.setHandler(name=>name==='getAppState'?new Promise(resolve=>reads.push(resolve)):Promise.resolve({deduped:true}));
+  const refresh=h.a.loadAppState(false);await turn();
+  const version=h.a.state.ledgerVersion;
+  // The ten-second retry fires while a successful full read is still pending.
+  await h.a.flushOutbox();await turn();
+  assert.equal(h.a.state.ledgerVersion,version,'a background retry must not invalidate the active full read');
+  reads.shift()(clone(h.f));assert.equal(await refresh,true);await turn();
+  assert.equal(reads.length,0,'the successful read must not start an endless replacement refresh');
+  assert.equal(h.a.state.syncing,false);assert.equal(h.a.state.lastConfirmedAt>0,true);
+  assert.deepEqual(clone(h.a.readOutbox()),queued,'blocked purchase and its original ID remain intact');
+});
+await check('queued writes wait for full refresh, then retry original payload exactly once',async()=>{
+  const row={entryId:'e1',date:'2030-01-15',merchant:'Example',amount:10,actualUsd:0.31};
+  const queued={'logExpense:e1':{name:'logExpense',params:[row],token:'t1'}};
+  const h=harness({savedOutbox:JSON.stringify(queued)});let resolveRead;const writes=[];
+  h.setHandler(name=>name==='getAppState'?new Promise(resolve=>resolveRead=resolve):Promise.resolve({deduped:true}));
+  const refresh=h.a.loadAppState(false);await turn();await h.a.flushOutbox();
+  assert.equal(h.calls.filter(x=>x[0]==='logExpense').length,0);
+  assert.deepEqual(clone(h.a.readOutbox()),queued);
+  resolveRead(clone(h.f));assert.equal(await refresh,true);
+  h.setHandler(async(name,args)=>{if(name==='getAppState')return clone(h.f);writes.push(clone(args[0]));return {deduped:true};});
+  await h.a.flushOutbox();assert.deepEqual(writes,[row]);assert.equal(Object.keys(h.a.readOutbox()).length,0);
+  assert.equal(h.a.state.syncing,false);assert.equal(h.a.state.flushing,false);
+});
+await check('full refresh starting during authorization lookup also defers the queue',async()=>{
+  const queued={'logExpense:e1':{name:'logExpense',params:[{entryId:'e1',date:'2030-01-15',merchant:'Example',amount:10}],token:'t1'}};
+  const h=harness({savedOutbox:JSON.stringify(queued)});let resolveAuth,resolveRead;
+  h.w.SpendApi.hasCode=()=>new Promise(resolve=>resolveAuth=resolve);
+  const flush=h.a.flushOutbox();await turn();
+  h.setHandler(name=>name==='getAppState'?new Promise(resolve=>resolveRead=resolve):Promise.resolve({deduped:true}));
+  const refresh=h.a.loadAppState(false);await turn();const version=h.a.state.ledgerVersion;
+  resolveAuth(true);await flush;
+  assert.equal(h.a.state.ledgerVersion,version);assert.equal(h.calls.filter(x=>x[0]==='logExpense').length,0);
+  assert.deepEqual(clone(h.a.readOutbox()),queued);
+  resolveRead(clone(h.f));assert.equal(await refresh,true);assert.equal(h.a.state.syncing,false);
+});
 await check('FX coalesces concurrent amounts, calculates locally at full rate precision, persists and separates dates',async()=>{
   const h=harness({realApi:true}),{w}=h;
   w.localStorage.setItem('lexiSpendPrivateApiCodeV1','fixture-code');
