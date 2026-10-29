@@ -39,3 +39,10 @@ input:focus, select:focus, textarea:focus {
 .progress-fill { background:#6f8f78; }
 .calendar-day.outside { color:#59616d; background:#111318; }
 .receipt-toast { border-color:#355443; background:#17231c; color:var(--ok); }
+
+/* The converter is a primary Track control; match the Amount field's touch target and type size. */
+.v1-converter-input {
+  height:40px !important;
+  min-height:40px !important;
+  font-size:17px !important;
+}
