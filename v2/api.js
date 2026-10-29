@@ -295,6 +295,73 @@
     return /^\d{4}-(0[1-9]|1[0-2])$/.test(String(value || '').trim());
   }
 
+  function budgetCategoryKey(value) {
+    const key = String(value || '')
+      .trim()
+      .toLowerCase()
+      .replace(/&/g, 'and')
+      .replace(/[^a-z0-9]+/g, '');
+    return key === 'shoppingandothers' ? 'shopping' : key;
+  }
+
+  function roundBudgetMoney(value) {
+    return Math.round((Number(value || 0) + Number.EPSILON) * 100) / 100;
+  }
+
+  function budgetReconciliationActive() {
+    return document.body?.dataset?.activeView === 'budget';
+  }
+
+  async function reconcileWeeklyBudgetSummary(summary, options = {}) {
+    if (!summary?.weekStart || !summary?.weekEnd) return summary;
+
+    const budgetedCategories = new Set(
+      (Array.isArray(summary.categories) ? summary.categories : [])
+        .filter(category => category && category.limit != null)
+        .map(category => budgetCategoryKey(category.name))
+        .filter(Boolean)
+    );
+    if (!budgetedCategories.size) return summary;
+
+    const months = [...new Set([
+      String(summary.weekStart).slice(0, 7),
+      String(summary.weekEnd).slice(0, 7)
+    ].filter(validCalendarMonth))];
+
+    let weeklyTotal = 0;
+    for (const month of months) {
+      const calendar = await refreshCalendarMonth(month, options);
+      for (const [date, day] of Object.entries(calendar?.days || {})) {
+        if (date < summary.weekStart || date > summary.weekEnd) continue;
+        for (const transaction of (Array.isArray(day?.transactions) ? day.transactions : [])) {
+          if (!budgetedCategories.has(budgetCategoryKey(transaction?.category))) continue;
+          weeklyTotal += Number(transaction?.usdAmount || 0);
+        }
+      }
+    }
+
+    return {
+      ...summary,
+      weeklyTotal: roundBudgetMoney(weeklyTotal)
+    };
+  }
+
+  async function reconcileBudgetResult(functionName, result, options = {}) {
+    if (!budgetReconciliationActive() || !result?.summary || !['getAppState', 'logExpense', 'deleteExpense'].includes(functionName)) {
+      return result;
+    }
+    try {
+      return {
+        ...result,
+        summary: await reconcileWeeklyBudgetSummary(result.summary, options)
+      };
+    } catch (_) {
+      // A Calendar refresh failure must not turn an otherwise successful ledger
+      // read/write into a sync error. Preserve the backend summary as fallback.
+      return result;
+    }
+  }
+
   async function callBackend(functionName, parameters = [], options = {}) {
     return performBackendCall(functionName, parameters, options);
   }
@@ -354,14 +421,14 @@
   async function call(functionName, parameters = [], options = {}) {
     const name = String(functionName || '').trim();
     if (name === 'previewUsd') return previewUsd(parameters, options);
-    if (name !== 'getCalendarMonth') {
-      return callBackend(name, parameters, options);
+    if (name === 'getCalendarMonth') {
+      const month = String(Array.isArray(parameters) ? parameters[0] || '' : '').trim();
+      if (!validCalendarMonth(month)) return callBackend(name, parameters, options);
+      return refreshCalendarMonth(month, options);
     }
 
-    const month = String(Array.isArray(parameters) ? parameters[0] || '' : '').trim();
-    if (!validCalendarMonth(month)) return callBackend(name, parameters, options);
-
-    return refreshCalendarMonth(month, options);
+    const result = await callBackend(name, parameters, options);
+    return reconcileBudgetResult(name, result, options);
   }
 
   async function previewUsd(parameters, options = {}) {
@@ -404,7 +471,8 @@
     await saveCode(code);
     resetBridge();
     try {
-      return await callBackend('getAppState', [today, '']);
+      const result = await callBackend('getAppState', [today, '']);
+      return await reconcileBudgetResult('getAppState', result);
     } catch (error) {
       await clearCode();
       throw error;
