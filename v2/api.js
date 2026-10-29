@@ -194,6 +194,41 @@
     return true;
   }
 
+  let backendRecoveryActive = false;
+
+  function setBackendRecoveryPrompt(show) {
+    backendRecoveryActive = Boolean(show);
+    const apply = () => {
+      const badge = document.getElementById?.('connectionBadge');
+      const settings = document.getElementById?.('settingsConnection');
+      const dialog = document.getElementById?.('settingsDialog');
+      let button = document.getElementById?.('backendAuthorizationButton');
+      if (!button && dialog) {
+        button = document.createElement('button');
+        button.id = 'backendAuthorizationButton';
+        button.type = 'button';
+        button.className = 'ghost-button';
+        button.textContent = 'Authorize backend';
+        button.addEventListener('click', () => {
+          window.open?.(BACKEND_URL, '_blank', 'noopener,noreferrer');
+        });
+        const actions = dialog.querySelector?.('.dialog-actions');
+        if (actions?.prepend) actions.prepend(button);
+        else dialog.querySelector?.('.dialog-body')?.appendChild?.(button);
+      }
+      if (button) button.hidden = !show;
+      if (!show) return;
+      if (badge) {
+        badge.textContent = 'Authorization needed';
+        badge.className = 'status-badge error';
+      }
+      if (settings) settings.textContent = 'Backend access may need authorization';
+    };
+    if (document.readyState === 'loading' && document.addEventListener) {
+      document.addEventListener('DOMContentLoaded', apply, { once:true });
+    } else apply();
+  }
+
   function waitReady() {
     if (target && targetOrigin) return Promise.resolve();
     if (readyPromise) return readyPromise;
@@ -205,7 +240,10 @@
         readyPromise = null;
         readyResolve = null;
         readyCancel = null;
-        reject(new Error('Could not connect to the Lexi Spend backend.'));
+        const error = new Error('Backend access may need authorization.');
+        error.code = 'BACKEND_AUTHORIZATION_REQUIRED';
+        reject(error);
+        setTimeout(() => setBackendRecoveryPrompt(true), 0);
       }, READY_TIMEOUT_MS);
 
       readyCancel = () => {
@@ -243,6 +281,7 @@
       target = event.source;
       targetOrigin = event.origin;
       readyResolve?.();
+      setBackendRecoveryPrompt(false);
       readyPromise = Promise.resolve();
       readyResolve = null;
       return;
@@ -375,6 +414,12 @@
   async function hasCode() {
     return Boolean(await readCode());
   }
+
+  document.addEventListener?.('visibilitychange', () => {
+    if (document.visibilityState !== 'visible' || !backendRecoveryActive || pending.size) return;
+    resetBridge();
+    setTimeout(() => window.dispatchEvent?.(new Event('online')), 250);
+  });
 
   ensureFrame();
 

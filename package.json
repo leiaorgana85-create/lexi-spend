@@ -2,7 +2,7 @@
   "name": "lexi-spend-release-checks",
   "private": true,
   "scripts": {
-    "test": "node tests/backend-contract.cjs && node tests/actual-usd-backend.cjs && node tests/auth-storage-regression.mjs && node tests/frontend-regressions.mjs"
+    "test": "node tests/backend-contract.cjs && node tests/actual-usd-backend.cjs && node tests/auth-storage-regression.mjs && node tests/backend-authorization-recovery.mjs && node tests/frontend-regressions.mjs"
   },
   "devDependencies": {
     "acorn": "8.15.0",
