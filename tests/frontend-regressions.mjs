@@ -148,6 +148,19 @@ await check('startup registers updates before network completion and drains pend
   assert.equal(h.calls.filter(x=>x[0]==='getAppState').length,1);assert.equal(Object.keys(h.a.readOutbox()).length,0);
   assert.equal(h.$('connectionBadge').textContent,'Connected');
 });
+await check('startup deferred pending queue cannot remain bare Syncing',async()=>{
+  const queued={'logExpense:e1':{name:'logExpense',params:[{entryId:'e1',date:'2030-01-15',merchant:'Example',currency:'THB',amount:10}],affectedDate:'2030-01-15',token:'t1'}};
+  const h=harness({savedOutbox:JSON.stringify(queued)});
+  h.w.localStorage.setItem('lexiSpendV2AppState',JSON.stringify({savedAt:1,confirmedAt:1,app:clone(h.f)}));
+  Object.defineProperty(h.w.document,'visibilityState',{configurable:true,value:'hidden'});
+  let writes=0;
+  h.setHandler(async name=>{if(name==='logExpense')writes++;return name==='getAppState'?clone(h.f):{deduped:true};});
+  await h.a.init();
+  assert.equal(writes,0,'hidden startup must defer the queued write');
+  assert.equal(Object.keys(h.a.readOutbox()).length,1,'pending payload and stable ID must remain durable');
+  assert.equal(h.$('connectionBadge').textContent,'1 pending');
+  assert.equal(h.$('settingsConnection').textContent,'1 pending');
+});
 await check('resume cannot remove a pending sync transport; new entries remain usable while flushing',async()=>{
   const h=harness({savedOutbox:JSON.stringify({'logExpense:e1':{name:'logExpense',params:[{entryId:'e1',date:'2030-01-15',merchant:'Example',currency:'THB',amount:10}],affectedDate:'2030-01-15',token:'t1'}})});
   h.a.bind();let resolveWrite;

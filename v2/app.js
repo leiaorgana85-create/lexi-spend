@@ -450,7 +450,7 @@
     renderCash();
     setLedgerButtons(state.busy);
     setText('settingsBackendVersion', state.app.appVersion || '—');
-    setText('settingsFrontendVersion', 'v1.03');
+    setText('settingsFrontendVersion', 'v1.04');
     renderOutboxStatus();
     if (persist) saveJson(APP_STATE_CACHE_KEY, { savedAt:Date.now(), confirmedAt:state.lastConfirmedAt, app:state.app });
   }
@@ -1430,7 +1430,7 @@
         return;
       }
       const hadPending = Object.keys(readOutbox()).length > 0;
-      if (hadPending) await flushOutbox();
+      if (hadPending) { await flushOutbox(); renderOutboxStatus(); }
       const awayMs = state.hiddenAt ? Date.now() - state.hiddenAt : 0;
       state.hiddenAt = 0;
       const dayChanged = refreshLocalDates();
@@ -1477,7 +1477,7 @@
     showView(state.activeView, false);
     if (await SpendApi.hasCode()) {
       const hadPending = Object.keys(readOutbox()).length > 0;
-      if (hadPending) await flushOutbox();
+      if (hadPending) { await flushOutbox(); renderOutboxStatus(); }
       if (!hadPending && state.activeView === 'calendar') void loadCalendarMonth(monthKey(state.calendarCursor));
       const refreshed = hadPending ? false : await loadAppState(false);
       if (refreshed && state.activeView === 'calendar') void loadCalendarMonth(monthKey(state.calendarCursor));
