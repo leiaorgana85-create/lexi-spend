@@ -1,0 +1,18 @@
+name: Temporary Spend v1.05 live verification
+on:
+  push:
+    branches: [fix/spend-backend-auth-recovery-v105]
+permissions:
+  contents: read
+jobs:
+  verify-live:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node scripts/check-version.cjs --live
