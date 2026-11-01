@@ -179,7 +179,10 @@
   }
 
   function resetBridge() {
+    // Removing a frame with outstanding calls strands their acknowledgements.
     if (pending.size) return false;
+    // Readiness waiters have not entered pending yet; settle them before
+    // replacing their frame so callers can retry instead of waiting forever.
     readyCancel?.();
     try { frame?.remove(); } catch (_) {}
     frame = null;
@@ -353,6 +356,8 @@
         summary: await reconcileWeeklyBudgetSummary(result.summary, options)
       };
     } catch (_) {
+      // A Calendar refresh failure must not turn an otherwise successful ledger
+      // read/write into a sync error. Preserve the backend summary as fallback.
       return result;
     }
   }
@@ -402,6 +407,8 @@
     }
     if (calendarRefreshes.has(normalized)) return calendarRefreshes.get(normalized);
 
+    // The app owns display caches and mutation guards; only canonical reads
+    // may resolve this API promise. Cached data must not masquerade as a refresh.
     const request = callBackend('getCalendarMonth', [normalized], options)
       .finally(() => {
         if (calendarRefreshes.get(normalized) === request) calendarRefreshes.delete(normalized);
@@ -465,6 +472,7 @@
               .then(result => {
                 if (!(Number(result?.rate) > 0) || !Number.isFinite(Number(result.rate))) throw new Error('Invalid exchange rate.');
                 rates[key] = { rate:Number(result.rate), effectiveDate:result.effectiveDate || day, source:result.source || '' };
+                // Bound storage; each entry is a dated reference rate, never a rounded dollar preview.
                 const keys = Object.keys(rates).sort((a,b) => b.slice(-10).localeCompare(a.slice(-10)));
                 keys.slice(90).forEach(old => delete rates[old]);
                 try { localStorage.setItem(FX_KEY, JSON.stringify(rates)); } catch (_) {}
