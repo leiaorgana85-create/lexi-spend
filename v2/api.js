@@ -179,10 +179,7 @@
   }
 
   function resetBridge() {
-    // Removing a frame with outstanding calls strands their acknowledgements.
     if (pending.size) return false;
-    // Readiness waiters have not entered pending yet; settle them before
-    // replacing their frame so callers can retry instead of waiting forever.
     readyCancel?.();
     try { frame?.remove(); } catch (_) {}
     frame = null;
@@ -356,8 +353,6 @@
         summary: await reconcileWeeklyBudgetSummary(result.summary, options)
       };
     } catch (_) {
-      // A Calendar refresh failure must not turn an otherwise successful ledger
-      // read/write into a sync error. Preserve the backend summary as fallback.
       return result;
     }
   }
@@ -407,8 +402,6 @@
     }
     if (calendarRefreshes.has(normalized)) return calendarRefreshes.get(normalized);
 
-    // The app owns display caches and mutation guards; only canonical reads
-    // may resolve this API promise. Cached data must not masquerade as a refresh.
     const request = callBackend('getCalendarMonth', [normalized], options)
       .finally(() => {
         if (calendarRefreshes.get(normalized) === request) calendarRefreshes.delete(normalized);
@@ -431,6 +424,24 @@
     return reconcileBudgetResult(name, result, options);
   }
 
+  function validSavedRate(value) {
+    return Number(value?.rate) > 0 && Number.isFinite(Number(value.rate));
+  }
+
+  function latestSavedRate(currency, date) {
+    const prefix = `${currency}:`;
+    let latestDay = '';
+    let latest = null;
+    for (const [savedKey, savedRate] of Object.entries(rates)) {
+      if (!savedKey.startsWith(prefix) || !validSavedRate(savedRate)) continue;
+      const savedDay = savedKey.slice(prefix.length);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(savedDay) || savedDay > date || savedDay <= latestDay) continue;
+      latestDay = savedDay;
+      latest = savedRate;
+    }
+    return latest;
+  }
+
   async function previewUsd(parameters, options = {}) {
     const [amount, currency, date] = parameters;
     const n = Number(amount);
@@ -442,22 +453,31 @@
     if (curr === 'USD') return { rate:1, usdAmount:Math.round(n * 100) / 100, effectiveDate:day };
     const key = `${curr}:${day}`;
     let fx = rates[key];
-    if (!(Number(fx?.rate) > 0) || !Number.isFinite(Number(fx.rate))) {
-      if (navigator.onLine === false) throw new Error('No saved exchange rate for this date.');
-      if (!rateRequests.has(key)) {
-        const request = callBackend('previewUsd', [1, curr, day], { timeoutMs:20000, ...options })
-          .then(result => {
-            if (!(Number(result?.rate) > 0) || !Number.isFinite(Number(result.rate))) throw new Error('Invalid exchange rate.');
-            rates[key] = { rate:Number(result.rate), effectiveDate:result.effectiveDate || day, source:result.source || '' };
-            // Bound storage; each entry is a dated reference rate, never a rounded dollar preview.
-            const keys = Object.keys(rates).sort((a,b) => b.slice(-10).localeCompare(a.slice(-10)));
-            keys.slice(90).forEach(old => delete rates[old]);
-            try { localStorage.setItem(FX_KEY, JSON.stringify(rates)); } catch (_) {}
-            return rates[key];
-          }).finally(() => rateRequests.delete(key));
-        rateRequests.set(key, request);
+    if (!validSavedRate(fx)) {
+      const savedFx = latestSavedRate(curr, day);
+      if (navigator.onLine === false) {
+        if (!savedFx) throw new Error('No saved exchange rate available.');
+        fx = savedFx;
+      } else {
+        try {
+          if (!rateRequests.has(key)) {
+            const request = callBackend('previewUsd', [1, curr, day], { timeoutMs:20000, ...options })
+              .then(result => {
+                if (!(Number(result?.rate) > 0) || !Number.isFinite(Number(result.rate))) throw new Error('Invalid exchange rate.');
+                rates[key] = { rate:Number(result.rate), effectiveDate:result.effectiveDate || day, source:result.source || '' };
+                const keys = Object.keys(rates).sort((a,b) => b.slice(-10).localeCompare(a.slice(-10)));
+                keys.slice(90).forEach(old => delete rates[old]);
+                try { localStorage.setItem(FX_KEY, JSON.stringify(rates)); } catch (_) {}
+                return rates[key];
+              }).finally(() => rateRequests.delete(key));
+            rateRequests.set(key, request);
+          }
+          fx = await rateRequests.get(key);
+        } catch (error) {
+          if (!savedFx) throw error;
+          fx = savedFx;
+        }
       }
-      fx = await rateRequests.get(key);
     }
     return { ...fx, usdAmount:Math.round((n * Number(fx.rate) + Number.EPSILON) * 100) / 100 };
   }
