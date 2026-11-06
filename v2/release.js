@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const VERSION = 'v1.12';
+  const VERSION = 'v1.13';
   const APP_STATE_CACHE_KEY = 'lexiSpendV2AppState';
 
   function applyVersion() {
@@ -20,7 +20,13 @@
     const budgetTab = document.querySelector('.lexi-tab[data-view="budget"]');
     if (!budgetTab || budgetTab.dataset.v108BudgetRefresh === '1') return;
     budgetTab.dataset.v108BudgetRefresh = '1';
+    // The Budget shim previously forced a full Sheets read on EVERY tab tap.
+    // Keep its first authoritative read but coalesce repeat visits.
+    let lastBudgetRefreshAt = 0;
     budgetTab.addEventListener('click', () => {
+      const now = Date.now();
+      if (lastBudgetRefreshAt && now - lastBudgetRefreshAt >= 0 && now - lastBudgetRefreshAt < 5 * 60 * 1000) return;
+      lastBudgetRefreshAt = now;
       setTimeout(() => document.getElementById('refreshAppButton')?.click(), 0);
     });
   }

@@ -6,7 +6,9 @@
   const EXPENSE_CURRENCY_KEY = 'lexiSpendV2ExpenseCurrency';
   const CASH_CURRENCY_KEY = 'lexiSpendV2CashCurrency';
   const CALENDAR_CACHE_PREFIX = 'lexiSpendV2Calendar:';
-  const CALENDAR_FRESH_MS = 60000;
+  // Background reads should not scan Sheets every minute while the app is idle.
+  const AUTO_REFRESH_MS = 5 * 60 * 1000;
+  const CALENDAR_FRESH_MS = AUTO_REFRESH_MS;
   const APP_STATE_CACHE_KEY = 'lexiSpendV2AppState';
   const PENDING_SAVES_KEY = 'lexiSpendV2PendingSaves';
   const pendingSaves = readJson(PENDING_SAVES_KEY) || {};
@@ -450,7 +452,7 @@
     renderCash();
     setLedgerButtons(state.busy);
     setText('settingsBackendVersion', state.app.appVersion || '—');
-    setText('settingsFrontendVersion', 'v1.05');
+    setText('settingsFrontendVersion', document.documentElement?.dataset?.appVersion || 'v1.13');
     renderOutboxStatus();
     if (persist) saveJson(APP_STATE_CACHE_KEY, { savedAt:Date.now(), confirmedAt:state.lastConfirmedAt, app:state.app });
   }
@@ -459,8 +461,6 @@
     state.needsAuthorization = false;
     state.refreshError = false;
     state.lastConfirmedAt = Date.now();
-    setText('settingsConnection', 'Connected');
-    setConnection('Connected', 'ok');
     renderOutboxStatus();
   }
 
@@ -502,8 +502,7 @@
     state.syncQueued = false;
     state.syncing = true;
     state.lastRefreshAttemptAt = Date.now();
-    setConnection(state.app ? 'Syncing' : 'Connecting');
-    setText('settingsConnection', state.app ? 'Syncing' : 'Connecting');
+    renderOutboxStatus();
 
     let lastError = null;
     try {
@@ -566,6 +565,7 @@
       renderCalendar(calendarCachedMonth(month));
       if (loadCalendar) void loadCalendarMonth(month);
     }
+    renderOutboxStatus();
   }
 
   function readView() {
@@ -718,13 +718,14 @@
   }
 
   function renderOutboxStatus() {
+    const calendarLoading = state.activeView === 'calendar' && state.calendarLoads.has(monthKey(state.calendarCursor));
     const entries = Object.values(readOutbox());
     const count = entries.length;
     const blocked = entries.filter(x => x.blocked).length;
     const text = count ? `${state.needsAuthorization ? 'Not connected · ' : navigator.onLine === false ? 'Offline · ' : state.flushing ? 'Syncing · ' : ''}${count} pending`
       : state.needsAuthorization ? 'Not connected'
       : navigator.onLine === false ? 'Offline · saved data'
-      : state.syncing ? (state.app ? 'Syncing' : 'Connecting')
+      : (state.syncing || calendarLoading) ? (state.app ? 'Syncing' : 'Connecting')
       : state.refreshError ? 'Sync error'
       : state.app ? (state.lastConfirmedAt ? 'Connected' : 'Saved data') : '';
     if (text) { setConnection(text, state.refreshError && !count ? 'error' : ''); setText('settingsConnection', text); }
@@ -1332,7 +1333,10 @@
     const isCurrentMonth = () => month === monthKey(state.calendarCursor);
     if (isCurrentMonth()) setText('calendarMonthTitle', monthTitle(state.calendarCursor));
     const memory = calendarCachedMonth(month);
-    if (isCurrentMonth()) renderCalendar(memory);
+    if (isCurrentMonth()) {
+      renderCalendar(memory);
+      renderOutboxStatus();
+    }
 
     const existing = state.calendarLoads.get(month);
     if (existing) return existing;
@@ -1347,12 +1351,12 @@
     let refreshAfterMutation = false;
     const request = (async () => {
       try {
-        const data = await SpendApi.call('getCalendarMonth', [month]);
+        const data = await SpendApi.call('getCalendarMonth', [month], { timeoutMs:30000 });
         // Deployed legacy V2 backend returns transaction-only Calendar months.
         // It can still provide historical Cash Wallet fees via getAppState(today).
         if (data && !Array.isArray(data.atmFeeEntries)) {
           try {
-            const historical = await SpendApi.call('getAppState', [`${month}-15`, state.cashCurrency || 'THB']);
+            const historical = await SpendApi.call('getAppState', [`${month}-15`, state.cashCurrency || 'THB'], { timeoutMs:30000 });
             const wallet = Object.values(historical?.cashWallets || {})
               .find(item => Array.isArray(item?.monthWithdrawals));
             const withdrawals = wallet?.monthWithdrawals || historical?.cash?.monthWithdrawals;
@@ -1396,10 +1400,12 @@
       } finally {
         state.calendarLoads.delete(month);
         if (refreshAfterMutation) void loadCalendarMonth(month, true);
+        else if (isCurrentMonth()) renderOutboxStatus();
       }
     })();
 
     state.calendarLoads.set(month, request);
+    if (isCurrentMonth()) renderOutboxStatus();
     return request;
   }
 
@@ -1502,13 +1508,13 @@
       const awayMs = state.hiddenAt ? Date.now() - state.hiddenAt : 0;
       state.hiddenAt = 0;
       const dayChanged = refreshLocalDates();
-      if ((!dayChanged && awayMs < 30000) || state.syncing) return;
+      if ((!dayChanged && (awayMs < 30000 || Date.now() - state.lastRefreshAttemptAt < AUTO_REFRESH_MS)) || state.syncing) return;
       if (state.busy) { state.syncQueued = true; return; }
       if (!(await SpendApi.hasCode()) || state.syncing) return;
       if (state.busy) { state.syncQueued = true; return; }
       if (hadPending) return;
       const refreshed = await loadAppState(false);
-      if (refreshed && state.activeView === 'calendar') void loadCalendarMonth(monthKey(state.calendarCursor), true);
+      if (refreshed && state.activeView === 'calendar') void loadCalendarMonth(monthKey(state.calendarCursor));
     });
     setInterval(() => {
       if (document.visibilityState === 'visible') {
@@ -1520,10 +1526,10 @@
 
   async function refreshVisibleData(force = false) {
     if (document.visibilityState === 'hidden' || navigator.onLine === false || state.busy || state.flushing || state.syncing) return false;
-    if (!force && Date.now() - state.lastRefreshAttemptAt < 60000) return false;
+    if (!force && Date.now() - state.lastRefreshAttemptAt < AUTO_REFRESH_MS) return false;
     if (!await SpendApi.hasCode()) return false;
     const refreshed = await loadAppState(false);
-    if (refreshed && state.activeView === 'calendar') void loadCalendarMonth(monthKey(state.calendarCursor), true);
+    if (refreshed && state.activeView === 'calendar') void loadCalendarMonth(monthKey(state.calendarCursor), force);
     return refreshed;
   }
 

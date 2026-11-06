@@ -236,6 +236,51 @@ await check('Calendar month refresh does not duplicate header Syncing status',as
   assert.doesNotMatch(source,/setStatus\('calendarStatus', 'Syncing…'\)/);
   assert.match(source,/setStatus\('calendarStatus', cached \? 'Could not refresh/);
 });
+await check('only the selected Calendar month uses the header syncing status',async()=>{
+  const h=harness(),{w,a,$,f}=h;
+  await a.loadAppState(false);
+  a.state.activeView='calendar';
+  let january, february;
+  h.setHandler(name=>name==='getCalendarMonth'
+    ? new Promise(resolve=>{if(a.state.calendarCursor.getMonth()===0)january=resolve;else february=resolve;})
+    : Promise.resolve(clone(f)));
+  const first=a.loadCalendarMonth('2030-01',true);
+  assert.equal($('connectionBadge').textContent,'Syncing');
+  assert.equal($('settingsConnection').textContent,'Syncing');
+  assert.equal($('calendarStatus').textContent,'');
+  a.state.calendarCursor=new w.Date(2030,1,1);
+  a.state.selectedDate='';
+  const second=a.loadCalendarMonth('2030-02',true);
+  assert.equal($('connectionBadge').textContent,'Syncing');
+  january(emptyMonth());await first;
+  assert.equal($('connectionBadge').textContent,'Syncing','old-month response must not clear current month sync');
+  february(emptyMonth());await second;
+  assert.equal($('connectionBadge').textContent,'Connected');
+  assert.equal($('calendarStatus').textContent,'');
+  assert.equal(h.calls.filter(x=>x[0]==='getCalendarMonth').length,2);
+});
+await check('Calendar loading and main sync share one header status until both finish',async()=>{
+  const h=harness(),{a,$,f}=h;
+  a.state.activeView='calendar';
+  let resolveShared,resolveMonth;
+  h.setHandler(name=>new Promise(resolve=>{if(name==='getAppState')resolveShared=resolve;else resolveMonth=resolve;}));
+  const shared=a.loadAppState(false);
+  const calendar=a.loadCalendarMonth('2030-01',true);
+  assert.equal($('connectionBadge').textContent,'Syncing');
+  resolveShared(clone(f));await shared;
+  assert.equal($('connectionBadge').textContent,'Syncing','Calendar still loading');
+  resolveMonth(emptyMonth());await calendar;
+  assert.equal($('connectionBadge').textContent,'Connected');
+});
+await check('Calendar errors remain visible but no longer strand header Syncing',async()=>{
+  const h=harness(),{a,$}=h;
+  await a.loadAppState(false);
+  a.state.activeView='calendar';
+  h.setHandler(async()=>{throw Error('Calendar backend unreachable');});
+  await a.loadCalendarMonth('2030-01',true);
+  assert.equal($('connectionBadge').textContent,'Connected');
+  assert.match($('calendarStatus').textContent,/Calendar backend unreachable/);
+});
 await check('legacy Calendar month gets historical ATM fees without adding withdrawals to spending',async()=>{
   const h=harness(),{a,$}=h;
   h.setHandler(async(name,args)=>{
@@ -292,14 +337,15 @@ await check('Calendar draws uncached month dates immediately without showing old
   assert.equal(h.$('selectedDayTotal').textContent,'—');
   replies.shift()(emptyMonth());await turn();assert.equal(h.$('selectedDayTotal').textContent,'$0.00');
 });
-await check('Calendar warm visits reuse confirmed data for 60 seconds while forced and stale reads still refresh',async()=>{
+await check('Calendar warm visits reuse confirmed data for five minutes while forced and stale reads still refresh',async()=>{
   const h=harness();h.a.state.activeView='calendar';
   await h.a.loadCalendarMonth('2030-01');await h.a.loadCalendarMonth('2030-01');await h.a.loadCalendarMonth('2030-01');
   assert.equal(h.calls.length,1);
   const before=JSON.parse(h.w.localStorage.getItem('lexiSpendV2Calendar:2030-01')).savedAt;
   h.setNow('2030-01-15T12:00:30Z');h.a.applyCalendarExpenseSave({entryId:'fixture1',date:'2030-01-15',usdAmount:2,category:'Category A'});
   assert.equal(JSON.parse(h.w.localStorage.getItem('lexiSpendV2Calendar:2030-01')).savedAt,before);
-  h.setNow('2030-01-15T12:01:01Z');await h.a.loadCalendarMonth('2030-01');assert.equal(h.calls.length,2);
+  h.setNow('2030-01-15T12:01:01Z');await h.a.loadCalendarMonth('2030-01');assert.equal(h.calls.length,1);
+  h.setNow('2030-01-15T12:05:01Z');await h.a.loadCalendarMonth('2030-01');assert.equal(h.calls.length,2);
   await h.a.loadCalendarMonth('2030-01',true);assert.equal(h.calls.length,3);
 });
 await check('Calendar saved launch paints before shared refresh and an uncached read starts without waiting for it',async()=>{
@@ -646,6 +692,9 @@ await check('visible same-day polling refreshes external edits, coalesces reques
   await h.a.refreshVisibleData();assert.equal(h.calls.length,0);
   h.setNow('2030-01-15T12:01:00Z');let finish;
   h.setHandler(name=>name==='getAppState'?new Promise(resolve=>finish=resolve):Promise.resolve(emptyMonth()));
+  for(const fn of h.intervals)fn();await turn();
+  assert.equal(h.calls.length,0,'one-minute timer must not trigger a redundant Sheets refresh');
+  h.setNow('2030-01-15T12:05:01Z');
   for(const fn of h.intervals)fn();await turn();
   await h.a.refreshVisibleData(true);assert.equal(h.calls.filter(x=>x[0]==='getAppState').length,1);
   const changed=clone(h.f);changed.summary.budgetTotal=12;finish(changed);await turn();
