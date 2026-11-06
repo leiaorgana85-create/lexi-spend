@@ -236,6 +236,57 @@ await check('Calendar month refresh does not duplicate header Syncing status',as
   assert.doesNotMatch(source,/setStatus\('calendarStatus', 'Syncing…'\)/);
   assert.match(source,/setStatus\('calendarStatus', cached \? 'Could not refresh/);
 });
+await check('header refresh immediately updates snapshot and Calendar in parallel and cannot double-submit',async()=>{
+  const h=harness(),{a,$,f}=h;
+  a.bind();
+  await a.loadAppState(false);
+  h.calls.length=0;
+  a.state.activeView='calendar';
+  a.saveCalendarCache('2030-01',emptyMonth());
+  let finishShared,finishCalendar;
+  h.setHandler(name=>new Promise(resolve=>{
+    if(name==='getAppState')finishShared=resolve;
+    else if(name==='getCalendarMonth')finishCalendar=resolve;
+    else throw Error('Unexpected request');
+  }));
+  assert.equal($('headerRefreshButton').disabled,false);
+  $('headerRefreshButton').click();
+  await turn();
+  assert(finishShared && finishCalendar,'manual refresh must start both requests without serial waiting');
+  assert.deepEqual(h.calls.map(item=>item[0]),['getCalendarMonth','getAppState']);
+  assert.equal($('connectionBadge').textContent,'Syncing');
+  assert.equal($('headerRefreshButton').disabled,true);
+  assert.equal($('headerRefreshButton').getAttribute('aria-busy'),'true');
+  $('headerRefreshButton').click();
+  $('refreshAppButton').click();
+  await turn();
+  assert.equal(h.calls.length,2,'repeated taps while refreshing must not duplicate calls');
+  finishShared(clone(f));
+  await turn();
+  assert.equal($('connectionBadge').textContent,'Syncing','header remains busy until Calendar completes');
+  finishCalendar(emptyMonth());
+  await turn();await turn();
+  assert.equal($('connectionBadge').textContent,'Connected');
+  assert.equal($('headerRefreshButton').disabled,false);
+  assert.equal($('headerRefreshButton').getAttribute('aria-busy'),'false');
+  // Even with a fresh five-minute cache, explicit manual refresh is never skipped.
+  h.setHandler(async name=>name==='getAppState'?clone(f):emptyMonth());
+  $('headerRefreshButton').click();
+  await turn();await turn();
+  assert.equal(h.calls.filter(item=>item[0]==='getAppState').length,2);
+  assert.equal(h.calls.filter(item=>item[0]==='getCalendarMonth').length,2);
+});
+await check('restoring confirmed cached data never fabricates an active Syncing request',async()=>{
+  const h=harness();
+  h.w.localStorage.setItem('lexiSpendV2AppState',JSON.stringify({
+    savedAt:Date.parse('2030-01-15T11:00:00Z'),
+    confirmedAt:Date.parse('2030-01-15T11:00:00Z'),app:clone(h.f)
+  }));
+  h.a.restoreCachedAppState();
+  assert.equal(h.$('connectionBadge').textContent,'Connected');
+  assert.equal(h.$('headerRefreshButton').disabled,false);
+  assert.equal(h.a.state.syncing,false);
+});
 await check('only the selected Calendar month uses the header syncing status',async()=>{
   const h=harness(),{w,a,$,f}=h;
   await a.loadAppState(false);
