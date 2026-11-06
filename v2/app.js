@@ -1342,7 +1342,6 @@
       if (isCurrentMonth()) setStatus('calendarStatus', '');
       return memory;
     }
-    if (isCurrentMonth() && state.activeView === 'calendar') setStatus('calendarStatus', 'Syncing…');
 
     const requestVersion = calendarVersion(month);
     let refreshAfterMutation = false;

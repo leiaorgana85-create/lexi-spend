@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const VERSION = 'v1.11';
+  const VERSION = 'v1.12';
   const APP_STATE_CACHE_KEY = 'lexiSpendV2AppState';
 
   function applyVersion() {

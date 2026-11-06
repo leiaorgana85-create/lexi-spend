@@ -222,6 +222,20 @@ await check('canonical Calendar refresh, request coalescing and no cache freshne
   await Promise.all([p,q]);assert.equal(a.state.calendar.get('2030-01').monthTotalUsd,20);
   assert(JSON.parse(w.localStorage.getItem(key)).savedAt>1);
 });
+await check('Calendar month refresh does not duplicate header Syncing status',async()=>{
+  const h=harness(),{a,$}=h;
+  h.setHandler(async(name)=>{
+    if(name==='getCalendarMonth') return emptyMonth();
+    throw Error('Unexpected API');
+  });
+  a.state.activeView='calendar';
+  a.state.calendarCursor=new Date(2030,0,15);
+  await a.loadCalendarMonth('2030-01',true);
+  assert.equal($('calendarStatus').textContent,'');
+  const source=fs.readFileSync(new URL('../v2/app.js', import.meta.url),'utf8');
+  assert.doesNotMatch(source,/setStatus\('calendarStatus', 'Syncing…'\)/);
+  assert.match(source,/setStatus\('calendarStatus', cached \? 'Could not refresh/);
+});
 await check('legacy Calendar month gets historical ATM fees without adding withdrawals to spending',async()=>{
   const h=harness(),{a,$}=h;
   h.setHandler(async(name,args)=>{

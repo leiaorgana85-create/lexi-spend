@@ -99,11 +99,11 @@ function apiHarness(activeView) {
   let refreshes = 0;
   w.document.getElementById('refreshAppButton').addEventListener('click', () => refreshes++);
   w.eval(releaseSource);
-  assert.equal(w.document.getElementById('settingsFrontendVersion').textContent,'v1.11');
+  assert.equal(w.document.getElementById('settingsFrontendVersion').textContent,'v1.12');
   w.document.querySelector('[data-view="budget"]').click();
   await new Promise(resolve => w.setTimeout(resolve,1));
   assert.equal(refreshes,1,'opening Budget triggers its authoritative refresh');
   w.close();
 }
 
-console.log('PASS Budget consistency: scoped refresh, budget-only weekly total, Shopping alias and v1.11 label.');
+console.log('PASS Budget consistency: scoped refresh, budget-only weekly total, Shopping alias and v1.12 label.');
