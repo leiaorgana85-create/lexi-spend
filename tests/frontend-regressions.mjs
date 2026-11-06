@@ -232,7 +232,7 @@ await check('Calendar month refresh does not duplicate header Syncing status',as
   a.state.calendarCursor=new Date(2030,0,15);
   await a.loadCalendarMonth('2030-01',true);
   assert.equal($('calendarStatus').textContent,'');
-  const source=fs.readFileSync(path.join(ROOT,'v2/app.js'),'utf8');
+  const source=fs.readFileSync(new URL('../v2/app.js', import.meta.url),'utf8');
   assert.doesNotMatch(source,/setStatus\('calendarStatus', 'Syncing…'\)/);
   assert.match(source,/setStatus\('calendarStatus', cached \? 'Could not refresh/);
 });
