@@ -1016,6 +1016,13 @@
       });
     }
     if (state.app.cash?.currency === currency) state.app.cash = state.app.cashWallets[currency];
+    // A Cash Wallet edit changes the selected month's ATM-fee memo total.
+    const affectedMonth = String(withdrawal.date || '').slice(0, 7);
+    if (affectedMonth) {
+      markCalendarMutation(affectedMonth);
+      state.calendar.delete(affectedMonth);
+      try { localStorage.removeItem(calendarCacheKey(affectedMonth)); } catch (_) {}
+    }
     saveJson(APP_STATE_CACHE_KEY, { savedAt:Date.now(), confirmedAt:state.lastConfirmedAt, app:state.app });
     renderCash();
   }
@@ -1199,6 +1206,16 @@
     host.replaceChildren();
     const month = monthKey(state.calendarCursor);
     const totals = data?.days || {};
+    const feeEntries = Array.isArray(data?.atmFeeEntries) ? data.atmFeeEntries : [];
+    const feesByDate = new Map();
+    feeEntries.forEach(entry => {
+      const date = String(entry?.date || '');
+      if (!feesByDate.has(date)) feesByDate.set(date, []);
+      feesByDate.get(date).push(entry);
+    });
+    setText('calendarAtmFees', !data ? '—' : (Array.isArray(data.atmFeeEntries)
+      ? money(feeEntries.reduce((total, entry) => total + Number(entry.atmFeeUsd || 0), 0))
+      : 'Not available'));
     const first = monthStart(state.calendarCursor);
     const mondayIndex = (first.getDay() + 6) % 7;
     const gridStart = new Date(first.getFullYear(), first.getMonth(), 1 - mondayIndex);
@@ -1224,6 +1241,13 @@
         count.className = 'day-count';
         count.textContent = `${day.count || 0} item${Number(day.count) === 1 ? '' : 's'}`;
         button.append(spend, count);
+      }
+      const dayFees = feesByDate.get(iso) || [];
+      if (dayFees.length && iso.slice(0,7) === month) {
+        const fee = document.createElement('span');
+        fee.className = 'day-atm-fee';
+        fee.textContent = `ATM ${money(dayFees.reduce((sum, entry) => sum + Number(entry.atmFeeUsd || 0), 0))}`;
+        button.appendChild(fee);
       }
       button.addEventListener('click', () => {
         if (iso.slice(0,7) !== month) {
@@ -1260,7 +1284,10 @@
     const list = $('selectedDayTransactions');
     list.replaceChildren();
     const rows = day.transactions || [];
-    if (!rows.length) {
+    const atmFees = Array.isArray(data?.atmFeeEntries)
+      ? data.atmFeeEntries.filter(entry => entry.date === date)
+      : [];
+    if (!rows.length && !atmFees.length) {
       list.innerHTML = data ? '<div class="list-empty">No spend.</div>' : '<div class="list-empty">Loading spend…</div>';
       return;
     }
@@ -1280,6 +1307,22 @@
       usd.textContent = ` (${money(tx.usdAmount)})`;
       amount.appendChild(usd);
 
+      item.append(main, amount);
+      list.appendChild(item);
+    });
+    atmFees.forEach(entry => {
+      const item = document.createElement('article');
+      item.className = 'calendar-txn-row';
+      const main = document.createElement('div');
+      main.className = 'calendar-txn-main';
+      main.textContent = 'ATM fee · separate from spending';
+      const amount = document.createElement('div');
+      amount.className = 'calendar-txn-amount';
+      amount.append(document.createTextNode(localMoney(entry.atmFee, entry.currency)));
+      const usd = document.createElement('span');
+      usd.className = 'calendar-txn-usd';
+      usd.textContent = ` (${money(entry.atmFeeUsd)})`;
+      amount.appendChild(usd);
       item.append(main, amount);
       list.appendChild(item);
     });
