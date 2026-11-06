@@ -555,10 +555,40 @@ function v2GetCalendarMonth_(monthValue) {
     transactionCount += 1;
   });
 
+
+  // ATM fees are a separate memo total: the cash withdrawn is not spending.
+  // Read the selected calendar month, not just the currently open Cash tab.
+  validateCashSchema_();
+  const cashSheet = getCashSheet_();
+  const cashLastRow = cashSheet.getLastRow();
+  const cashRows = cashLastRow >= 2
+    ? cashSheet.getRange(2, 1, cashLastRow - 1, 12).getValues()
+    : [];
+  const atmFeeEntries = [];
+  let monthAtmFeesUsd = 0;
+  cashRows.forEach(row => {
+    const date = normalizeDateCell_(row[0]);
+    if (!date || date.slice(0, 7) !== month) return;
+    const atmFee = Number(row[5]) || 0;
+    if (atmFee <= 0) return;
+    const atmFeeUsd = Number(row[6]) || 0;
+    atmFeeEntries.push({
+      entryId:String(row[11] || ''),
+      date,
+      currency:String(row[2] || ''),
+      atmFee,
+      atmFeeUsd:roundMoney_(atmFeeUsd)
+    });
+    monthAtmFeesUsd += atmFeeUsd;
+  });
+  atmFeeEntries.sort((a, b) => a.date.localeCompare(b.date));
+
   return {
     month,
     monthTotalUsd:roundMoney_(monthTotalUsd),
     transactionCount,
+    monthAtmFeesUsd:roundMoney_(monthAtmFeesUsd),
+    atmFeeEntries,
     days
   };
 }

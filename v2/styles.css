@@ -466,6 +466,8 @@ input:focus,select:focus,textarea:focus {
 .calendar-title { min-width:0; text-align:center; font-size:12px; font-weight:720; }
 .calendar-status { display:block; margin:0 0 5px; text-align:center; }
 .calendar-status:empty { display:none; }
+.calendar-month-fees { display:flex; justify-content:space-between; align-items:baseline; gap:8px; padding:5px 7px; margin:0 0 6px; border-radius:7px; background:var(--surface-2); color:var(--muted); font-size:9px; }
+.calendar-month-fees strong { color:var(--accent-strong); font-size:11px; white-space:nowrap; }
 .calendar-weekdays,.calendar-grid { display:grid; grid-template-columns:repeat(7,minmax(0,1fr)); }
 .calendar-weekdays { margin-bottom:3px; }
 .calendar-weekdays div { text-align:center; color:var(--muted); font-size:8px; font-weight:650; padding:2px 0; }
@@ -492,6 +494,7 @@ input:focus,select:focus,textarea:focus {
 .day-number { display:block; font-size:9px; line-height:1; font-weight:650; }
 .day-spend { display:block; margin-top:5px; color:var(--ok); font-size:10px; line-height:1; font-weight:820; white-space:nowrap; }
 .day-count { display:block; margin-top:2px; color:var(--muted); font-size:7px; line-height:1; }
+.day-atm-fee { display:block; margin-top:2px; color:var(--muted); font-size:7px; line-height:1; white-space:nowrap; }
 .calendar-detail { margin-top:7px; padding-top:7px; border-top:1px solid var(--line); }
 .day-detail-head { display:flex; justify-content:space-between; align-items:baseline; gap:8px; margin-bottom:5px; }
 .day-detail-title,.day-total { font-size:11px; line-height:1.1; font-weight:720; }

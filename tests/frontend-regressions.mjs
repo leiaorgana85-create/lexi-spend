@@ -10,7 +10,7 @@ const htmlRoot = process.env.SPEND_HTML_ROOT || root;
 const source = file => fs.readFileSync(path.join(root, file), 'utf8');
 const clone = value => JSON.parse(JSON.stringify(value));
 const turn = () => new Promise(resolve => setImmediate(resolve));
-const emptyMonth = () => ({ days:{}, monthTotalUsd:0, transactionCount:0 });
+const emptyMonth = () => ({ days:{}, monthTotalUsd:0, transactionCount:0, monthAtmFeesUsd:0, atmFeeEntries:[] });
 function fixture() {
   return { appVersion:'fixture', currency:'THB', country:'Example', recent:[],
     cashWallets:{ THB:{currency:'THB',withdrawals:2000,cashSpent:0,balance:2000,
@@ -221,6 +221,36 @@ await check('canonical Calendar refresh, request coalescing and no cache freshne
   reply({type:'lexi-spend-result',id:messages[0].id,ok:true,result:{...emptyMonth(),monthTotalUsd:20}});
   await Promise.all([p,q]);assert.equal(a.state.calendar.get('2030-01').monthTotalUsd,20);
   assert(JSON.parse(w.localStorage.getItem(key)).savedAt>1);
+});
+await check('legacy Calendar month gets historical ATM fees without adding withdrawals to spending',async()=>{
+  const h=harness(),{a,$}=h;
+  h.setHandler(async(name,args)=>{
+    if(name==='getCalendarMonth') return {days:{},monthTotalUsd:0,transactionCount:0};
+    if(name==='getAppState'){
+      assert.equal(args[0],'2030-01-15');
+      return {...clone(h.f),cashWallets:{THB:{
+        monthWithdrawals:[
+          {entryId:'atm-a',date:'2030-01-10',currency:'THB',amount:3000,atmFee:250,atmFeeUsd:7.42},
+          {entryId:'atm-b',date:'2030-01-11',currency:'THB',amount:20000,atmFee:250,atmFeeUsd:7.40},
+          {entryId:'skip',date:'2030-02-01',currency:'THB',amount:100,atmFee:100,atmFeeUsd:3}
+        ]
+      }}};
+    }
+    throw Error('Unexpected API');
+  });
+  await a.loadCalendarMonth('2030-01',true);
+  const data=a.state.calendar.get('2030-01');
+  assert.equal(data.monthAtmFeesUsd,14.82);
+  assert.equal(data.atmFeeEntries.length,2);
+  assert.equal(data.monthTotalUsd,0);
+  assert.equal(data.transactionCount,0);
+  assert.equal($('calendarAtmFees').textContent,'$14.82');
+  a.state.selectedDate='2030-01-10';
+  a.state.activeView='calendar';
+  await a.loadCalendarMonth('2030-01',true);
+  assert.match($('selectedDayTransactions').textContent,/ATM fee/);
+  assert.match($('selectedDayTransactions').textContent,/7.42/);
+  assert.equal($('selectedDayTotal').textContent,'$0.00');
 });
 await check('Calendar rejects a response predating a confirmed mutation and converges',async()=>{
   const h=harness(),{a}=h;const pending=[];h.setHandler(()=>new Promise(resolve=>pending.push(resolve)));
