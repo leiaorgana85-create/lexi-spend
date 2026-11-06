@@ -103,6 +103,11 @@ function apiHarness(activeView) {
   w.document.querySelector('[data-view="budget"]').click();
   await new Promise(resolve => w.setTimeout(resolve,1));
   assert.equal(refreshes,1,'opening Budget triggers its authoritative refresh');
+  w.document.querySelector('[data-view="budget"]').click();
+  await new Promise(resolve => w.setTimeout(resolve,1));
+  assert.equal(refreshes,1,'repeat Budget taps within five minutes do not launch duplicate full syncs');
+  w.document.getElementById('refreshAppButton').click();
+  assert.equal(refreshes,2,'manual refresh remains available');
   w.close();
 }
 
