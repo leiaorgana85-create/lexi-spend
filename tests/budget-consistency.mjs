@@ -91,6 +91,28 @@ function apiHarness(activeView) {
 }
 
 {
+  const {w,messages,reply} = apiHarness('budget');
+  const pending = w.SpendApi.call('getAppState',['2030-02-01','THB']);
+  await turn();
+  const summary = appState();
+  summary.summary.weekStart='2030-01-29';
+  summary.summary.weekEnd='2030-02-04';
+  reply({type:'lexi-spend-result',id:messages[0].id,ok:true,result:summary});
+  await turn();
+  assert.equal(messages.length,3,'cross-month Budget must send both calendar reads concurrently');
+  assert.deepEqual(messages.slice(1).map(message=>JSON.stringify(message.parameters)),['["2030-01"]','["2030-02"]']);
+  reply({type:'lexi-spend-result',id:messages[2].id,ok:true,result:{days:{
+    '2030-02-01':{transactions:[{category:'Food',usdAmount:11}]}
+  }}});
+  reply({type:'lexi-spend-result',id:messages[1].id,ok:true,result:{days:{
+    '2030-01-29':{transactions:[{category:'Shopping & Others',usdAmount:7}]}
+  }}});
+  const result=await pending;
+  assert.equal(result.summary.weeklyTotal,18,'parallel reads must retain the same weekly spending total');
+  w.close();
+}
+
+{
   const w = new Window({url:'https://example.test/lexi-spend/v2/'});
   w.document.body.innerHTML = `
     <button class="lexi-tab" data-view="budget">Budget</button>
