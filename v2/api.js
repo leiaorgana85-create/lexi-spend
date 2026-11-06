@@ -328,9 +328,11 @@
       String(summary.weekEnd).slice(0, 7)
     ].filter(validCalendarMonth))];
 
+    // A budget week may span two calendar months. Read them concurrently
+    // rather than holding the header Syncing for two serial Sheets round trips.
+    const calendars = await Promise.all(months.map(month => refreshCalendarMonth(month, options)));
     let weeklyTotal = 0;
-    for (const month of months) {
-      const calendar = await refreshCalendarMonth(month, options);
+    for (const calendar of calendars) {
       for (const [date, day] of Object.entries(calendar?.days || {})) {
         if (date < summary.weekStart || date > summary.weekEnd) continue;
         for (const transaction of (Array.isArray(day?.transactions) ? day.transactions : [])) {
