@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en" data-build="2026-11-06.calendar-sync-throttle-1" data-app-version="v1.13">
+<html lang="en" data-build="2026-11-06.manual-refresh-1" data-app-version="v1.14">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
@@ -26,6 +26,12 @@
     </div>
     <div class="header-actions">
       <div id="connectionBadge" class="status-badge">Connecting</div>
+      <button id="headerRefreshButton" class="icon-button" type="button" aria-label="Refresh latest data" title="Refresh latest data">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M20 11a8 8 0 1 0-2.4 5.7"/>
+          <path d="M20 5v6h-6"/>
+        </svg>
+      </button>
       <button id="settingsButton" class="icon-button" type="button" aria-label="Settings" title="Settings">
         <svg viewBox="0 0 24 24" aria-hidden="true">
           <path d="M12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7Z"/>
@@ -247,7 +253,7 @@
         <div class="settings-row"><span>Backend</span><strong id="settingsBackendVersion">—</strong></div>
       </div>
       <div class="dialog-actions"><button id="refreshAppButton" class="ghost-button" type="button">Refresh data</button><button id="reconnectButton" class="ghost-button" type="button">Enter API code</button><button id="forgetApiCodeButton" class="ghost-button danger-button" type="button">Forget API code</button></div>
-      <small id="appVersion" data-version="v1.13" style="display:block;font-size:10px;line-height:1.5;font-weight:400;color:var(--muted,#888);text-align:right;margin:10px 0 0"><span id="settingsFrontendVersion">v1.13</span></small>
+      <small id="appVersion" data-version="v1.14" style="display:block;font-size:10px;line-height:1.5;font-weight:400;color:var(--muted,#888);text-align:right;margin:10px 0 0"><span id="settingsFrontendVersion">v1.14</span></small>
     </div>
   </dialog>
 
