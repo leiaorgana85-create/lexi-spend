@@ -1349,6 +1349,32 @@
     const request = (async () => {
       try {
         const data = await SpendApi.call('getCalendarMonth', [month]);
+        // Deployed legacy V2 backend returns transaction-only Calendar months.
+        // It can still provide historical Cash Wallet fees via getAppState(today).
+        if (data && !Array.isArray(data.atmFeeEntries)) {
+          try {
+            const historical = await SpendApi.call('getAppState', [`${month}-15`, state.cashCurrency || 'THB']);
+            const wallet = Object.values(historical?.cashWallets || {})
+              .find(item => Array.isArray(item?.monthWithdrawals));
+            const withdrawals = wallet?.monthWithdrawals || historical?.cash?.monthWithdrawals;
+            if (Array.isArray(withdrawals)) {
+              data.atmFeeEntries = withdrawals
+                .filter(row => String(row?.date || '').slice(0,7) === month && Number(row?.atmFee || 0) > 0)
+                .map(row => ({
+                  entryId:String(row.entryId || ''),
+                  date:String(row.date),
+                  currency:String(row.currency || ''),
+                  atmFee:Number(row.atmFee || 0),
+                  atmFeeUsd:roundCalendarMoney(row.atmFeeUsd)
+                }));
+              data.monthAtmFeesUsd = roundCalendarMoney(
+                data.atmFeeEntries.reduce((sum, row) => sum + row.atmFeeUsd, 0)
+              );
+            }
+          } catch (_) {
+            // Keep the expense calendar readable; never fabricate missing fees.
+          }
+        }
         if (calendarVersion(month) !== requestVersion) {
           const cached = calendarCachedMonth(month);
           if (isCurrentMonth() && cached) renderCalendar(cached);
