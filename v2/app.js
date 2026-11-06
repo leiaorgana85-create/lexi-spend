@@ -1399,8 +1399,8 @@
         return cached || null;
       } finally {
         state.calendarLoads.delete(month);
-        if (isCurrentMonth()) renderOutboxStatus();
         if (refreshAfterMutation) void loadCalendarMonth(month, true);
+        else if (isCurrentMonth()) renderOutboxStatus();
       }
     })();
 
