@@ -40,6 +40,7 @@
     manualDates: {},
     localDay: localIsoDate(),
     syncing: false,
+    manualRefreshPending: false,
     flushing: false,
     lastConfirmedAt: 0,
     refreshError: false,
@@ -452,7 +453,7 @@
     renderCash();
     setLedgerButtons(state.busy);
     setText('settingsBackendVersion', state.app.appVersion || '—');
-    setText('settingsFrontendVersion', document.documentElement?.dataset?.appVersion || 'v1.13');
+    setText('settingsFrontendVersion', document.documentElement?.dataset?.appVersion || 'v1.14');
     renderOutboxStatus();
     if (persist) saveJson(APP_STATE_CACHE_KEY, { savedAt:Date.now(), confirmedAt:state.lastConfirmedAt, app:state.app });
   }
@@ -472,8 +473,7 @@
     state.lastConfirmedAt = Number(cached.confirmedAt || 0);
     state.cashCurrency = readCashCurrency() || state.app.currency || 'THB';
     renderApp();
-    setText('settingsConnection', 'Syncing');
-    setConnection('Syncing');
+    // A restored snapshot is not a network request; only an active read is syncing.
     return true;
   }
 
@@ -719,17 +719,23 @@
 
   function renderOutboxStatus() {
     const calendarLoading = state.activeView === 'calendar' && state.calendarLoads.has(monthKey(state.calendarCursor));
+    const refreshing = state.syncing || calendarLoading || state.manualRefreshPending;
     const entries = Object.values(readOutbox());
     const count = entries.length;
     const blocked = entries.filter(x => x.blocked).length;
     const text = count ? `${state.needsAuthorization ? 'Not connected · ' : navigator.onLine === false ? 'Offline · ' : state.flushing ? 'Syncing · ' : ''}${count} pending`
       : state.needsAuthorization ? 'Not connected'
       : navigator.onLine === false ? 'Offline · saved data'
-      : (state.syncing || calendarLoading) ? (state.app ? 'Syncing' : 'Connecting')
+      : refreshing ? (state.app ? 'Syncing' : 'Connecting')
       : state.refreshError ? 'Sync error'
       : state.app ? (state.lastConfirmedAt ? 'Connected' : 'Saved data') : '';
     if (text) { setConnection(text, state.refreshError && !count ? 'error' : ''); setText('settingsConnection', text); }
     setText('settingsLastSynced', state.lastConfirmedAt ? new Date(state.lastConfirmedAt).toLocaleString() : 'Not yet confirmed');
+    const manualButton = $('headerRefreshButton');
+    if (manualButton) {
+      manualButton.disabled = state.busy || state.flushing || refreshing || navigator.onLine === false;
+      manualButton.setAttribute('aria-busy', refreshing ? 'true' : 'false');
+    }
     let host = $('pendingChanges');
     if (!host && entries.length) {
       host = document.createElement('div'); host.id = 'pendingChanges';
@@ -1442,7 +1448,8 @@
     $('receiptInput')?.addEventListener('change', uploadStandaloneReceipt);
     $('settingsButton').addEventListener('click', () => $('settingsDialog').showModal());
     $('closeSettingsButton').addEventListener('click', () => $('settingsDialog').close());
-    $('refreshAppButton')?.addEventListener('click', () => { void refreshVisibleData(true); });
+    $('refreshAppButton')?.addEventListener('click', () => { void requestManualRefresh(); });
+    $('headerRefreshButton')?.addEventListener('click', () => { void requestManualRefresh(); });
     $('reconnectButton').addEventListener('click', () => { $('settingsDialog').close(); openConnectDialog(); });
     $('forgetApiCodeButton').addEventListener('click', async () => {
       if (!confirm('Forget the saved API code on this device?')) return;
@@ -1524,12 +1531,29 @@
     }, 60000);
   }
 
+  async function requestManualRefresh() {
+    if (state.manualRefreshPending || state.syncing || state.busy || state.flushing || navigator.onLine === false) return false;
+    state.manualRefreshPending = true;
+    renderOutboxStatus();
+    try { return await refreshVisibleData(true); }
+    finally {
+      state.manualRefreshPending = false;
+      renderOutboxStatus();
+    }
+  }
+
   async function refreshVisibleData(force = false) {
     if (document.visibilityState === 'hidden' || navigator.onLine === false || state.busy || state.flushing || state.syncing) return false;
     if (!force && Date.now() - state.lastRefreshAttemptAt < AUTO_REFRESH_MS) return false;
     if (!await SpendApi.hasCode()) return false;
+    if (state.busy || state.flushing || state.syncing || navigator.onLine === false) return false;
+    // A manual refresh can read the main snapshot and selected Calendar month
+    // concurrently; the previous serial reads needlessly prolonged Syncing.
+    const manualCalendarMonth = force && state.activeView === 'calendar' ? monthKey(state.calendarCursor) : '';
+    const manualCalendarRead = manualCalendarMonth ? loadCalendarMonth(manualCalendarMonth, true) : null;
     const refreshed = await loadAppState(false);
-    if (refreshed && state.activeView === 'calendar') void loadCalendarMonth(monthKey(state.calendarCursor), force);
+    if (refreshed && state.activeView === 'calendar' && !manualCalendarRead) void loadCalendarMonth(monthKey(state.calendarCursor));
+    if (manualCalendarRead) await manualCalendarRead;
     return refreshed;
   }
 
