@@ -534,13 +534,13 @@ function logExpense(data) {
     ''
   ];
 
+  const nextRow = sheet.getLastRow() + 1;
+  const maxRows = sheet.getMaxRows();
+  if (nextRow > maxRows) {
+    sheet.insertRowsAfter(maxRows, Math.max(100, nextRow - maxRows));
+  }
   sheet
-    .getRange(
-      sheet.getLastRow() + 1,
-      1,
-      1,
-      15
-    )
+    .getRange(nextRow, 1, 1, 15)
     .setValues([
       newRow
     ]);
