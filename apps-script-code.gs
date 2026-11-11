@@ -867,7 +867,12 @@ function addCashWithdrawal(data) {
   const sheet =
     getCashSheet_();
 
-  sheet.appendRow([
+  const nextRow = sheet.getLastRow() + 1;
+  const maxRows = sheet.getMaxRows();
+  if (nextRow > maxRows) {
+    sheet.insertRowsAfter(maxRows, Math.max(100, nextRow - maxRows));
+  }
+  sheet.getRange(nextRow, 1, 1, 12).setValues([[
     date,
     amount,
     currency,
@@ -878,10 +883,9 @@ function addCashWithdrawal(data) {
     bankDebitUsd,
     country,
     note,
-    new Date()
-      .toISOString(),
+    new Date().toISOString(),
     entryId
-  ]);
+  ]]);
 
   return {
     ok: true,
