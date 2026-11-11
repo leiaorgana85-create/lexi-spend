@@ -295,6 +295,10 @@ function v2LogExpense_(data) {
     }
 
     const rowNumber = sheet.getLastRow() + 1;
+    const maxRows = sheet.getMaxRows();
+    if (rowNumber > maxRows) {
+      sheet.insertRowsAfter(maxRows, Math.max(100, rowNumber - maxRows));
+    }
     sheet.getRange(rowNumber, 1, 1, 16).setValues([[
       date,
       merchant,
