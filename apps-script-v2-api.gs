@@ -459,7 +459,12 @@ function v2AddCashWithdrawal_(data) {
       };
     }
 
-    sheet.appendRow([
+    const rowNumber = sheet.getLastRow() + 1;
+    const maxRows = sheet.getMaxRows();
+    if (rowNumber > maxRows) {
+      sheet.insertRowsAfter(maxRows, Math.max(100, rowNumber - maxRows));
+    }
+    sheet.getRange(rowNumber, 1, 1, 12).setValues([[
       date,
       amount,
       currency,
@@ -472,7 +477,7 @@ function v2AddCashWithdrawal_(data) {
       note,
       new Date().toISOString(),
       entryId
-    ]);
+    ]]);
   } finally {
     lock.releaseLock();
   }
