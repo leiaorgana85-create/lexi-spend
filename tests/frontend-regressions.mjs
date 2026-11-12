@@ -54,6 +54,13 @@ function harness({ realApi=false, savedPending=null, savedCurrency=null, savedCa
 let passed=0;
 async function check(name,fn){await fn();passed++;console.log(`PASS ${name}`);}
 try {
+await check('GTQ replaces VND in both selectable currency lists',async()=>{
+  const h=harness();
+  const expected=['THB','KRW','GTQ','MXN','USD'];
+  for(const id of ['expenseCurrency','cashCurrency']){
+    assert.deepEqual(Array.from(h.$(id).options,o=>o.value),expected);
+  }
+});
 await check('reset during bridge readiness settles waiting refresh and permits retry',async()=>{
   const {w,a,$,f}=harness({realApi:true});
   w.localStorage.setItem('lexiSpendPrivateApiCodeV1','fixture-code');
@@ -668,7 +675,7 @@ await check('option taps survive trigger blur before click for every Spend dropd
 await check('JPY is absent from both currency menus and legacy preferences safely fall back without deleting history',async()=>{
   const h=harness({savedCurrency:'JPY',savedCashCurrency:'JPY'}),{a,$}=h;await a.init();await turn();
   for(const id of ['expenseCurrency','cashCurrency']){
-    assert.deepEqual([...$(id).options].map(o=>o.value),['THB','KRW','VND','MXN','USD']);assert.equal($(id).value,'THB');
+    assert.deepEqual([...$(id).options].map(o=>o.value),['THB','KRW','GTQ','MXN','USD']);assert.equal($(id).value,'THB');
   }
   a.state.app.cashWallets.JPY={currency:'JPY',balance:1000,calendarMonthFeesUsd:2};a.state.cashCurrency='JPY';a.renderApp();
   assert.equal(a.state.cashCurrency,'THB');assert.equal($('cashCurrency').value,'THB');assert.equal(a.state.app.cashWallets.JPY.balance,1000);

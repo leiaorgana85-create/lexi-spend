@@ -50,6 +50,12 @@ assert.equal(config.monthlyBudgetLimit,1515);
 assert.deepEqual(Array.from(config.categories,x=>x.name),['Food','Shopping & Others','GLP-1']);
 assert.equal(context.normalizeCategory_('shopping and others'),'Shopping & Others');
 assert.equal(context.normalizeCategory_('Housing'),'Housing');
+assert.equal(context.canonicalCountryForCurrency_('GTQ','Thailand'),'Guatemala',
+  'GTQ expense and cash entries must use Guatemala rather than the current stay');
+assert.ok(vm.runInContext('SUPPORTED_WALLET_CURRENCIES.includes("GTQ")',context),
+  'GTQ cash wallet must be returned by getAppState');
+assert.ok(vm.runInContext('SUPPORTED_WALLET_CURRENCIES.includes("VND")',context),
+  'existing VND wallet history must remain readable');
 assert.strictEqual(context.v2BudgetConfig_(),config);
 assert.equal(reads,1,'Canonical budget cache must be shared');
 assert.throws(()=>context.v2LogExpense_({entryId:'fixture01',date:'2026-10-25',today:'2026-10-25',

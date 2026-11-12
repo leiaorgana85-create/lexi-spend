@@ -7,7 +7,7 @@ const SHEET_NAME = 'Transactions';
 const CASH_SHEET_NAME = 'Cash Wallet';
 const STAYS_SHEET_NAME = 'Stays';
 const SETUP_SHEET_NAME = 'Setup';
-const APP_VERSION = '13.12.21';
+const APP_VERSION = '13.12.22';
 const FX_API = 'https://api.frankfurter.dev/v2/rate';
 
 const RECEIPT_ROOT_FOLDER_PROPERTY = 'LEXI_SPEND_RECEIPT_ROOT_FOLDER_ID';
@@ -51,6 +51,7 @@ const CURRENCY_COUNTRY_MAP = {
   THB: 'Thailand',
   KRW: 'South Korea',
   VND: 'Vietnam',
+  GTQ: 'Guatemala',
   JPY: 'Japan',
   MXN: 'Mexico'
 };
@@ -59,6 +60,7 @@ const SUPPORTED_WALLET_CURRENCIES = [
   'THB',
   'KRW',
   'VND',
+  'GTQ',
   'JPY',
   'MXN',
   'USD'
