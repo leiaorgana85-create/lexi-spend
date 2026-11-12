@@ -139,6 +139,11 @@ function v2MoneyEqual_(a, b) {
   return Math.abs(Number(a || 0) - Number(b || 0)) < 0.000001;
 }
 
+function v2CanonicalCategory_(value) {
+  const raw = String(value || '').trim();
+  return normalizeCategory_(raw) || raw;
+}
+
 function v2AssertTransactionRetryMatches_(row, expected) {
   const actualDate = normalizeDateCell_(row[0]);
   const actualCountry = String(row[8] || '').trim();
@@ -149,7 +154,7 @@ function v2AssertTransactionRetryMatches_(row, expected) {
   const same =
     actualDate === expected.date &&
     String(row[1] || '').trim() === expected.merchant &&
-    String(row[2] || '').trim() === expected.category &&
+    v2CanonicalCategory_(row[2]) === v2CanonicalCategory_(expected.category) &&
     String(row[3] || '').trim() === expected.paymentMethod &&
     v2MoneyEqual_(row[4], expected.amount) &&
     String(row[5] || '').trim().toUpperCase() === expected.currency &&
@@ -229,7 +234,8 @@ function v2LogExpense_(data) {
   const entryId = v2EntryId_(data.entryId);
   const date = normalizeIsoDate_(data.date);
   const merchant = String(data.merchant || '').trim();
-  const category = String(data.category || '').trim();
+  const rawCategory = String(data.category || '').trim();
+  const category = v2CanonicalCategory_(rawCategory);
   const paymentMethod = String(data.paymentMethod || 'Card').trim();
   const amount = Number(data.amount);
   const currency = String(data.currency || '').trim().toUpperCase();
@@ -243,7 +249,7 @@ function v2LogExpense_(data) {
   if (!date) throw new Error('Invalid date.');
   if (!merchant) throw new Error('Merchant is required.');
   if (!Number.isFinite(amount) || amount < 0) throw new Error('Invalid amount.');
-  if (!category) throw new Error('Category is required.');
+  if (!rawCategory) throw new Error('Category is required.');
   if (!currency) throw new Error('Currency is required.');
   if (!['Cash','Card'].includes(paymentMethod)) throw new Error('Payment method must be Cash or Card.');
 
@@ -300,7 +306,7 @@ function v2LogExpense_(data) {
       sheet.insertRowsAfter(maxRows, Math.max(100, rowNumber - maxRows));
     }
     sheet.getRange(rowNumber, 1, 1, 16).setValues([[
-      date,
+      sheetDateValue_(date),
       merchant,
       category,
       paymentMethod,
@@ -465,7 +471,7 @@ function v2AddCashWithdrawal_(data) {
       sheet.insertRowsAfter(maxRows, Math.max(100, rowNumber - maxRows));
     }
     sheet.getRange(rowNumber, 1, 1, 12).setValues([[
-      date,
+      sheetDateValue_(date),
       amount,
       currency,
       fx.rate,
@@ -563,7 +569,6 @@ function v2GetCalendarMonth_(monthValue) {
     monthTotalUsd += usdAmount;
     transactionCount += 1;
   });
-
 
   // ATM fees are a separate memo total: the cash withdrawn is not spending.
   // Read the selected calendar month, not just the currently open Cash tab.
