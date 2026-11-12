@@ -18,12 +18,12 @@ Status: **PREPARATION ONLY — NOT DEPLOYED**. Do not merge or switch app endpoi
   - `v2/api.js` (v2 frontend)
   - `bridge-state.js` (additional bridge)
   Search the complete frontend for the prior deployment URL before any switch.
-- Canonical repository's four backend files:
+- Apps Script project contains **five source/configuration files total**: four implementation files listed below **plus `appsscript.json`**. Canonical repository's four implementation files:
   - `apps-script-code.gs` → `Code.gs`
   - `apps-script-v2-api.gs` → `V2Api.gs`
   - `apps-script-auth-transfer.gs` → `AuthTransfer.gs`
   - `apps-script-bridge.html` → `Bridge.html`
-- `appsscript.json` is not stored in GitHub; preserve the **actual live manifest** rather than reconstructing it by guesswork.
+- The fifth file, `appsscript.json`, is present in the owner-observed live Apps Script project but not stored in the GitHub repository; preserve the **actual live manifest** rather than reconstructing it by guesswork.
 - `Code.gs` uses `SpreadsheetApp.openById(getSpreadsheetId_())`, so binding it does not require replacing the spreadsheet selection logic with `getActiveSpreadsheet()`.
 
 ## Gate 0 — snapshot the live Apps Script project
