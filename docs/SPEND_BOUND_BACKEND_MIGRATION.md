@@ -44,18 +44,15 @@ Apps Script Script Properties are **not shared** across projects: https://develo
 
 Copy all non-expired property keys and exact values securely from the standalone API to the bound project, without printing values or adding them to GitHub. Relevant keys known from code:
 
-- `LEXI_SPEND_SPREADSHEET_ID` — keep the live spreadsheet ID above
-- `LEXI_SPEND_RECEIPT_ROOT_FOLDER_ID` — preserve the current private receipt folder
-- `LEXI_SPEND_API_CODE_SHA256` — preserve the existing API-code hash; **never invoke `setupLexiSpendApiCode()`**, which generates a replacement credential
-- `LEXI_SPEND_GOOGLE_SUB_V1` — preserve linked Google-account subject
-- `LEXI_SPEND_TRANSFER_SESSIONS_V1` — preserve valid authorization sessions for continuity
-- `country`, `currency`, `symbol`, plus any additional properties in the actual live project
+- **Important source divergence:** the supplied live `Code.gs` uses `const SPREADSHEET_ID = '193q0JQObnwVspUT48QUpWPF_HkgMHKzSyizWy1dH4gc'` and `SpreadsheetApp.openById(SPREADSHEET_ID)`. The newer GitHub `Code.gs` instead requires `LEXI_SPEND_SPREADSHEET_ID` Script Property. **The owner confirms the property does not exist in the current live project. Do not blindly replace with repository Code.gs.** Keep the current ID mechanism until an explicit, tested migration of this configuration.- The owner reports **exactly two currently configured Script Properties** in standalone `Lexi Spend API`: `LEXI_SPEND_RECEIPT_ROOT_FOLDER_ID` (receipt root) and `LEXI_SPEND_API_CODE_SHA256` (existing API code hash). Preserve their values privately, without writing them to GitHub. **Never invoke `setupLexiSpendApiCode()`**, which regenerates the API code and invalidates existing authorization.
+- `AuthTransfer.gs` contains optional `LEXI_SPEND_GOOGLE_SUB_V1` and `LEXI_SPEND_TRANSFER_SESSIONS_V1`, but the owner confirms neither is currently configured; **do not invent or prepopulate them**. Similarly `country`, `currency`, `symbol` fall back to defaults; do not create values not present in current configuration.
+- The owner's Apps Script settings are `America/New_York`, Cloud Logging on, V8 runtime on, and manifest visibility on; the supplied manifest specifies `timeZone: America/New_York`, `runtimeVersion: V8`, `exceptionLogging: STACKDRIVER`, web app `executeAs: USER_DEPLOYING` and `access: ANYONE_ANONYMOUS`. Preserve these when staging and deploying.
 
 Review existing installable triggers, project timezone, OAuth scopes, advanced services, and Google Cloud project association before recreating only those actually needed. Any Google Cloud project change needs explicit sign-in / consent testing. Do not paste private properties into issues, PRs, or chat.
 
 ## Gate 2 — stage the bound project (no frontend switch)
 
-1. Compare every downloaded live `.gs`, `.html` and manifest against the repository and resolve drift before editing. Compare latest code and deployed version separately. Do not discard undocumented live functions.
+1. **Live editor five-file source provided, source comparison completed in part; deployed version NOT independently confirmed.** Use these owner-provided files as migration baseline. Differences from GitHub include: local sheet-bound ID constant vs repo script property requirement; local native date-writing and category normalization vs repo text-date and simplified category handling; GitHub's Nov 6 calendar ATM-fee reporting and Nov 12 GTQ absent in local editor. Resolve each difference with controlled tests and preserve existing live functionality. Compare active deployed version separately; do not discard undocumented functions.
 2. In the **existing bound project**, load the verified full source with correct Apps Script file types and names, preserving `appsscript.json` configuration. Do not create another spreadsheet or another unrelated Apps Script project.
 3. Copy project-specific Script Properties securely, preserve access, and authorize Google services as owner. Verify project points only at the existing live ledger and correct receipt root.
 4. Test **read-only** backend functions, permission scopes, old and new authentication mechanisms, FX/GTQ, and receipt folder access in the new bound project. Never add synthetic expenses to live Transactions or Cash Wallet.
