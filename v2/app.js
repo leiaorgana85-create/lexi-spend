@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const CURRENCIES = ['THB','KRW','VND','MXN','USD'];
+  const CURRENCIES = ['THB','KRW','GTQ','MXN','USD'];
   const VIEW_KEY = 'lexiSpendV2ActiveView';
   const EXPENSE_CURRENCY_KEY = 'lexiSpendV2ExpenseCurrency';
   const CASH_CURRENCY_KEY = 'lexiSpendV2CashCurrency';
@@ -453,7 +453,7 @@
     renderCash();
     setLedgerButtons(state.busy);
     setText('settingsBackendVersion', state.app.appVersion || '—');
-    setText('settingsFrontendVersion', document.documentElement?.dataset?.appVersion || 'v1.14');
+    setText('settingsFrontendVersion', document.documentElement?.dataset?.appVersion || 'v1.15');
     renderOutboxStatus();
     if (persist) saveJson(APP_STATE_CACHE_KEY, { savedAt:Date.now(), confirmedAt:state.lastConfirmedAt, app:state.app });
   }
