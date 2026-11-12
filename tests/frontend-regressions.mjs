@@ -54,6 +54,13 @@ function harness({ realApi=false, savedPending=null, savedCurrency=null, savedCa
 let passed=0;
 async function check(name,fn){await fn();passed++;console.log(`PASS ${name}`);}
 try {
+await check('GTQ replaces VND in both selectable currency lists',async()=>{
+  const h=harness();
+  const expected=['THB','KRW','GTQ','MXN','USD'];
+  for(const id of ['expenseCurrency','cashCurrency']){
+    assert.deepEqual(Array.from(h.$(id).options,o=>o.value),expected);
+  }
+});
 await check('reset during bridge readiness settles waiting refresh and permits retry',async()=>{
   const {w,a,$,f}=harness({realApi:true});
   w.localStorage.setItem('lexiSpendPrivateApiCodeV1','fixture-code');
