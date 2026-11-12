@@ -53,6 +53,7 @@ const data = {entryId:'wallet970test',date:'2026-11-11',amount:100,currency:'THB
 const shared = {
   console, Number, String, Math, Array, Set, Date,
   normalizeIsoDate_: x=>x, normalizeDateCell_: x=>x,
+  sheetDateValue_: x=>new Date(x+'T00:00:00Z'),
   canonicalCountryForCurrency_:()=> 'Thailand',
   getUsdRate_:()=>({rate:0.03,source:'fixture',effectiveDate:'2026-11-11'}),
   roundMoney_:money,
@@ -81,7 +82,10 @@ const shared = {
 }
 {
   const f=cashFixture(), context={...shared,
-    Utilities:{getUuid:()=> 'legacy-wallet970'}};
+    Utilities:{getUuid:()=> 'legacy-wallet970',parseDate:(s,tz,fmt)=>new Date(s+'T00:00:00Z'),formatDate:(d,tz,fmt)=>d.toISOString().slice(0,10)},
+    PropertiesService:{getScriptProperties:()=>({getProperty:()=> 'fixture-spreadsheet'})},
+    SpreadsheetApp:{openById:()=>({getSpreadsheetTimeZone:()=> 'UTC'})}
+  };
   vm.createContext(context);
   vm.runInContext(fs.readFileSync(path.join(__dirname,'../apps-script-code.gs'),'utf8'),context);
   context.normalizeIsoDate_=x=>x;
