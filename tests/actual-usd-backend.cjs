@@ -14,6 +14,7 @@ const sheet={getLastRow:()=>rows.length+1,getMaxRows:()=>capacity,
 const context={Number,String,Math,Array,Set,Date,console,
  normalizeIsoDate_:x=>x,normalizeDateCell_:x=>x,todayIso_:()=> '2026-10-24',
  canonicalCountryForCurrency_:()=> 'Thailand',normalizeCategory_:x=>x,
+ sheetDateValue_:x=>new Date(x+'T00:00:00Z'),
  getBudgetConfig_:()=>({categories:[{name:'Food'}]}),validateTransactionSchema_(){},getSheet_:()=>sheet,
  validateCashSchema_(){},getCashSheet_:()=>({getLastRow:()=>1}),
  roundMoney_:money,getUsdRate_:()=>({rate:.03,source:'reference',effectiveDate:'2026-10-24'}),
@@ -93,7 +94,11 @@ const legacySheet={
    getValues(){return legacyRows.slice(row-2,row-2+height).map(v=>v.slice(col-1,col-1+width));}
  }; }
 };
-const legacyContext={console,Date,Number,String,Math,Array,Utilities:{getUuid:()=> 'legacy-capacity-908'}};
+const legacyContext={console,Date,Number,String,Math,Array,
+  Utilities:{getUuid:()=> 'legacy-capacity-908',parseDate:(s,tz,fmt)=>new Date(s+'T00:00:00Z'),formatDate:(d,tz,fmt)=>d.toISOString().slice(0,10)},
+  PropertiesService:{getScriptProperties:()=>({getProperty:()=> 'fixture-spreadsheet'})},
+  SpreadsheetApp:{openById:()=>({getSpreadsheetTimeZone:()=> 'UTC'})}
+};
 vm.createContext(legacyContext);
 vm.runInContext(legacySource,legacyContext);
 legacyContext.normalizeIsoDate_=x=>x;
