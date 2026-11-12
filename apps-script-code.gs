@@ -17,7 +17,6 @@ let SPREADSHEET_TIME_ZONE_CACHE_ = null;
 let SPREADSHEET_CACHE_ = null;
 let BUDGET_CONFIG_CACHE_ = null;
 
-
 const STAY_HEADERS = [
   'Stay',
   'Start',
@@ -45,7 +44,6 @@ const TRANSACTION_HEADERS = [
   'Receipt Link',
   'Receipt File ID'
 ];
-
 
 const CURRENCY_COUNTRY_MAP = {
   THB: 'Thailand',
@@ -518,7 +516,7 @@ function logExpense(data) {
     Utilities.getUuid();
 
   const newRow = [
-    date,
+    sheetDateValue_(date),
     merchant,
     category,
     paymentMethod,
@@ -875,7 +873,7 @@ function addCashWithdrawal(data) {
     sheet.insertRowsAfter(maxRows, Math.max(100, nextRow - maxRows));
   }
   sheet.getRange(nextRow, 1, 1, 12).setValues([[
-    date,
+    sheetDateValue_(date),
     amount,
     currency,
     fx.rate,
@@ -1556,8 +1554,12 @@ function getSpendingSummary_(
       ) + 1
     );
 
-  const budgetConfig = getBudgetConfig_();
-  const categoryLimits = budgetConfig.categories;
+  const budgetConfig =
+    getBudgetConfig_();
+
+  const categoryLimits =
+    budgetConfig.categories;
+
   const periodFactor =
     periodDays /
     budgetConfig.standardMonthDays;
@@ -1693,7 +1695,14 @@ function getSpendingSummary_(
         date >=
           week.start &&
         date <=
-          week.end
+          week.end &&
+        category &&
+        categories[
+          category
+        ] &&
+        categories[
+          category
+        ].countsTowardAppLimit
       ) {
         weekTotal += usd;
       }
@@ -2650,35 +2659,95 @@ function getSheet_() {
 function getBudgetConfig_() {
   if (BUDGET_CONFIG_CACHE_) return BUDGET_CONFIG_CACHE_;
 
-  const sheet = getSpreadsheet_().getSheetByName(SETUP_SHEET_NAME);
-  if (!sheet) throw new Error('Setup sheet not found.');
+  const sheet =
+    getSpreadsheet_()
+      .getSheetByName(
+        SETUP_SHEET_NAME
+      );
 
-  const monthlyBudgetLimit = Number(sheet.getRange('B4').getValue());
-  const standardMonthDays = Number(sheet.getRange('B5').getValue());
-  const rows = sheet.getRange('D2:F20').getValues();
-
-  const categories = rows
-    .map(row => ({
-      name: String(row[0] || '').trim(),
-      limit: row[1] === '' ? null : Number(row[1]),
-      treatment: String(row[2] || '').trim().toLowerCase()
-    }))
-    .filter(row => row.name && (row.treatment === 'budgeted' || row.treatment === 'no limit'))
-    .map(row => ({
-      name: row.name,
-      limit: row.limit == null || !Number.isFinite(row.limit) ? null : row.limit,
-      countsTowardAppLimit: row.treatment === 'budgeted'
-    }));
-
-  if (!Number.isFinite(monthlyBudgetLimit) || monthlyBudgetLimit <= 0) {
-    throw new Error('Setup app monthly limit is invalid.');
+  if (!sheet) {
+    throw new Error(
+      'Setup sheet not found.'
+    );
   }
-  if (!Number.isFinite(standardMonthDays) || standardMonthDays <= 0) {
-    throw new Error('Setup standard month days is invalid.');
-  }
-  if (!categories.length) throw new Error('Setup app categories are missing.');
 
-  BUDGET_CONFIG_CACHE_ = { monthlyBudgetLimit, standardMonthDays, categories };
+  const monthlyBudgetLimit =
+    Number(
+      sheet.getRange('B4').getValue()
+    );
+
+  const standardMonthDays =
+    Number(
+      sheet.getRange('B5').getValue()
+    );
+
+  const rows =
+    sheet
+      .getRange('D2:F20')
+      .getValues();
+
+  const categories =
+    rows
+      .map(row => ({
+        name:
+          String(row[0] || '').trim(),
+        limit:
+          row[1] === ''
+            ? null
+            : Number(row[1]),
+        treatment:
+          String(row[2] || '')
+            .trim()
+            .toLowerCase()
+      }))
+      .filter(row =>
+        row.name &&
+        (
+          row.treatment === 'budgeted' ||
+          row.treatment === 'no limit'
+        )
+      )
+      .map(row => ({
+        name: row.name,
+        limit:
+          row.limit == null ||
+          !Number.isFinite(row.limit)
+            ? null
+            : row.limit,
+        countsTowardAppLimit:
+          row.treatment === 'budgeted'
+      }));
+
+  if (
+    !Number.isFinite(monthlyBudgetLimit) ||
+    monthlyBudgetLimit <= 0
+  ) {
+    throw new Error(
+      'Setup app monthly limit is invalid.'
+    );
+  }
+
+  if (
+    !Number.isFinite(standardMonthDays) ||
+    standardMonthDays <= 0
+  ) {
+    throw new Error(
+      'Setup standard month days is invalid.'
+    );
+  }
+
+  if (!categories.length) {
+    throw new Error(
+      'Setup app categories are missing.'
+    );
+  }
+
+  BUDGET_CONFIG_CACHE_ = {
+    monthlyBudgetLimit,
+    standardMonthDays,
+    categories
+  };
+
   return BUDGET_CONFIG_CACHE_;
 }
 
@@ -2691,14 +2760,47 @@ function categoryKey_(value) {
 }
 
 function normalizeCategory_(value) {
-  const key = categoryKey_(value);
+  const key =
+    categoryKey_(value);
+
   if (!key) return null;
 
-  const configured = getBudgetConfig_().categories.find(item => categoryKey_(item.name) === key);
-  if (configured) return configured.name;
+  const configured =
+    getBudgetConfig_()
+      .categories
+      .find(item =>
+        categoryKey_(item.name) === key
+      );
 
-  const housingAliases = ['housing', 'housingutilitiesinternet'];
-  return housingAliases.includes(key) ? 'Housing' : null;
+  if (configured) {
+    return configured.name;
+  }
+
+  /*
+    Backward compatibility for rows or queued payloads created before
+    the canonical category was renamed from Shopping & Others to Shopping.
+  */
+  if (key === 'shoppingandothers') {
+    const shopping =
+      getBudgetConfig_()
+        .categories
+        .find(item =>
+          categoryKey_(item.name) === 'shopping'
+        );
+
+    if (shopping) {
+      return shopping.name;
+    }
+  }
+
+  const housingAliases = [
+    'housing',
+    'housingutilitiesinternet'
+  ];
+
+  return housingAliases.includes(key)
+    ? 'Housing'
+    : null;
 }
 
 function ensureEntryIds_() {
@@ -3240,6 +3342,46 @@ function normalizeIsoDate_(value) {
     .test(s)
     ? s
     : '';
+}
+
+function sheetDateValue_(iso) {
+  const normalized =
+    normalizeIsoDate_(iso);
+
+  if (!normalized) {
+    throw new Error(
+      'Invalid date.'
+    );
+  }
+
+  /*
+    Write date-only values as real Google Sheets dates at midnight in the
+    spreadsheet timezone. This preserves the owner-supplied calendar date
+    while avoiding text cells that break date formulas and sorting.
+  */
+  const timeZone =
+    getSpreadsheetTimeZone_();
+
+  const parsed =
+    Utilities.parseDate(
+      normalized,
+      timeZone,
+      'yyyy-MM-dd'
+    );
+
+  if (
+    Utilities.formatDate(
+      parsed,
+      timeZone,
+      'yyyy-MM-dd'
+    ) !== normalized
+  ) {
+    throw new Error(
+      'Invalid date.'
+    );
+  }
+
+  return parsed;
 }
 
 function getSpreadsheetTimeZone_() {
