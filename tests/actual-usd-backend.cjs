@@ -12,7 +12,7 @@ const sheet={getLastRow:()=>rows.length+1,getMaxRows:()=>capacity,
  createTextFinder(id){return {matchEntireCell(){return this;},findNext(){const i=rows.findIndex(row=>row[12]===id);return i<0?null:{getRow:()=>i+2};}};}
  };}};
 const context={Number,String,Math,Array,Set,Date,console,
- normalizeIsoDate_:x=>x,normalizeDateCell_:x=>x,todayIso_:()=> '2026-10-24',
+ normalizeIsoDate_:x=>x,normalizeDateCell_:x=>x instanceof Date ? x.toISOString().slice(0,10) : x,todayIso_:()=> '2026-10-24',
  canonicalCountryForCurrency_:()=> 'Thailand',normalizeCategory_:x=>x,
  sheetDateValue_:x=>new Date(x+'T00:00:00Z'),
  getBudgetConfig_:()=>({categories:[{name:'Food'}]}),validateTransactionSchema_(){},getSheet_:()=>sheet,
