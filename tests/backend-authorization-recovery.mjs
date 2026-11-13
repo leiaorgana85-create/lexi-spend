@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import vm from 'node:vm';
 
 const source = fs.readFileSync('v2/api.js', 'utf8');
-const BACKEND_URL = 'https://script.google.com/macros/s/AKfycby084l1Rupc838tdinecb2J5NCdOurkIa-smKFJqhypYINd_5walm15NLMWH7vSPWrA/exec';
+const BACKEND_URL = 'https://script.google.com/macros/s/AKfycbz2ro39nGN5hw3jqSSvXtJb_eCmDiiGzB8SPZBMPvwU5Ve4gUdnCbTURsEls3YGtOvC/exec';
 const timers = [];
 const listeners = new Map();
 const nodes = new Map();
