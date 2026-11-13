@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const BACKEND_URL = 'https://script.google.com/macros/s/AKfycby084l1Rupc838tdinecb2J5NCdOurkIa-smKFJqhypYINd_5walm15NLMWH7vSPWrA/exec';
+  const BACKEND_URL = 'https://script.google.com/macros/s/AKfycbz2ro39nGN5hw3jqSSvXtJb_eCmDiiGzB8SPZBMPvwU5Ve4gUdnCbTURsEls3YGtOvC/exec';
   const BRIDGE_URL = `${BACKEND_URL}?lexiSpendV2=2`;
   const AUTH_KEY = 'lexiSpendPrivateApiCodeV1';
   const AUTH_DB = 'lexi-spend-auth-v1';

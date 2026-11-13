@@ -88,9 +88,9 @@ context.window = context;
 vm.runInNewContext(fs.readFileSync('v2/release.js', 'utf8'), context, { filename:'release.js' });
 
 setImmediate(() => {
-  assert.equal(html.dataset.appVersion, 'v1.15');
-  assert.equal(appVersion.dataset.version, 'v1.15');
-  assert.equal(settingsVersion.textContent, 'v1.15');
+  assert.equal(html.dataset.appVersion, 'v1.16');
+  assert.equal(appVersion.dataset.version, 'v1.16');
+  assert.equal(settingsVersion.textContent, 'v1.16');
   assert.equal(title.textContent, 'Withdrawals October');
   assert.equal(a.meta.textContent, '12,345 THB + 220 THB Fee; Actual Visa Debit Amount $378.90');
   assert.equal(b.meta.textContent, '2,345 THB + 180 THB Fee; Actual Visa Debit Amount $75.12');
@@ -98,5 +98,5 @@ setImmediate(() => {
   assert(style, 'cash UI style injected');
   assert.match(style.textContent, /flex-direction:row/);
   assert.match(style.textContent, /font-size:8\.5px/);
-  console.log('PASS Cash UI regression under v1.15 release');
+  console.log('PASS Cash UI regression under v1.16 release');
 });

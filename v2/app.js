@@ -453,7 +453,7 @@
     renderCash();
     setLedgerButtons(state.busy);
     setText('settingsBackendVersion', state.app.appVersion || '—');
-    setText('settingsFrontendVersion', document.documentElement?.dataset?.appVersion || 'v1.15');
+    setText('settingsFrontendVersion', document.documentElement?.dataset?.appVersion || 'v1.16');
     renderOutboxStatus();
     if (persist) saveJson(APP_STATE_CACHE_KEY, { savedAt:Date.now(), confirmedAt:state.lastConfirmedAt, app:state.app });
   }

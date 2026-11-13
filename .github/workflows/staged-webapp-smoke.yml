@@ -1,6 +1,8 @@
 name: Staged Apps Script endpoint smoke
 on:
   pull_request:
+  push:
+    branches: [main]
 permissions:
   contents: read
 jobs:
