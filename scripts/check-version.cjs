@@ -11,7 +11,14 @@ assert.equal((html.match(/id="appVersion"/g)||[]).length,1,'Exactly one visible 
 assert(html.includes('data-version="'+release.version+'"'),'Visible version mismatch');
 assert(worker.includes('// App version: '+release.version),'Worker version mismatch');
 const files=[[release.html,release.url],[release.worker,new URL('sw.js',release.url).href]];
-if(release.repository.endsWith('/lexi-spend'))files.push(['v2/app.js',new URL('app.js',release.url).href]);
+if(release.repository.endsWith('/lexi-spend')) {
+ files.push(
+  ['v2/app.js',new URL('app.js',release.url).href],
+  ['v2/api.js',new URL('api.js',release.url).href],
+  ['index.html',new URL('../index.html',release.url).href],
+  ['bridge-state.js',new URL('../bridge-state.js',release.url).href]
+ );
+}
 if(process.argv.includes('--live'))(async()=>{
  for(const [file,url]of files){
   const response=await fetch(url+'?verify-version='+release.version,{redirect:'error',cache:'no-store',signal:AbortSignal.timeout(15000)});

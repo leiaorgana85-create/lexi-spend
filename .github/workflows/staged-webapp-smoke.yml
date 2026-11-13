@@ -1,0 +1,19 @@
+name: Staged Apps Script endpoint smoke
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  staged-endpoint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node scripts/smoke-apps-script.cjs
+        env:
+          LEXI_SPEND_STAGED_WEBAPP_URL: https://script.google.com/macros/s/AKfycbz2ro39nGN5hw3jqSSvXtJb_eCmDiiGzB8SPZBMPvwU5Ve4gUdnCbTURsEls3YGtOvC/exec

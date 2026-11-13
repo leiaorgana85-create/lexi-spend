@@ -1,7 +1,7 @@
 (() => {
   'use strict';
   const B = window.LexiSpendBridge = {
-    URL: 'https://script.google.com/macros/s/AKfycby084l1Rupc838tdinecb2J5NCdOurkIa-smKFJqhypYINd_5walm15NLMWH7vSPWrA/exec',
+    URL: 'https://script.google.com/macros/s/AKfycbz2ro39nGN5hw3jqSSvXtJb_eCmDiiGzB8SPZBMPvwU5Ve4gUdnCbTURsEls3YGtOvC/exec',
     KEY: 'lexiSpendPrivateApiCodeV1',
     LEGACY_COOKIE: 'lexi_spend_api_code_v1',
     DB_NAME: 'lexi-spend-auth-v1',
