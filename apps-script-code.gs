@@ -1535,11 +1535,12 @@ function getSpendingSummary_(
       stayEnd
     );
 
+  // Weekly blocks reset at each stay-month and cannot cross its end.
   const week =
     getStayWeek_(
       current,
-      stayStart,
-      stayEnd
+      period.start,
+      period.end
     );
 
   const periodDays =
