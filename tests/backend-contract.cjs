@@ -65,7 +65,7 @@ console.log('PASS backend contract: all shipped GS dependencies resolve; removed
 // Only explicitly authenticated RPC entry points may be public. doGet is a
 // data-free HTML bridge; doPost validates the API credential before dispatch.
 const publicFunctions = ast.body.filter(n=>n.type==='FunctionDeclaration' && !n.id.name.endsWith('_')).map(n=>n.id.name).sort();
-assert.deepEqual(publicFunctions,['authBridgeExecuteSession','authGoogleBootstrap','bridgeExecute','bridgeExecuteV2','doGet','doPost']);
+assert.deepEqual(publicFunctions,['authBridgeExecuteSession','authGoogleBootstrap','bridgeExecute','bridgeExecuteV2','doGet','doPost','installHealthEmail','runHealthEmail']);
 const securityCalls=[];
 const expectedCode='synthetic-test-code';
 const crypto=require('node:crypto');
@@ -192,6 +192,7 @@ const healthProps=new Map();
 let healthNow=new Date('2031-02-01T01:05:00Z'), healthZone='Asia/Bangkok';
 let healthRows=[['Overview','Value'],['DATA CHECKS',''],['Integrity',0],['Open placeholders (info)',2],['Other check',0],['','']];
 let healthSent=[], healthReads=0, healthReleased=0, healthTriggers=[];
+let healthActive='owner@example.invalid', healthEffective='owner@example.invalid';
 const healthClock=(now,zone)=>{
   const parts=new Intl.DateTimeFormat('en-CA',{timeZone:zone,year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',hourCycle:'h23'}).formatToParts(now);
   const p=Object.fromEntries(parts.map(x=>[x.type,x.value]));
@@ -203,8 +204,8 @@ const healthContext={
   Date:class extends Date{constructor(...args){super(...(args.length?args:[healthNow.getTime()]));}},
   Utilities:{formatDate:(now,zone,fmt)=>fmt==='HH'?String(healthClock(now,zone).hour).padStart(2,'0'):healthClock(now,zone).day},
   PropertiesService:{getScriptProperties:()=>({getProperty:k=>healthProps.get(k)||null,setProperty:(k,v)=>healthProps.set(k,v)})},
-  LockService:{getScriptLock:()=>({tryLock:()=>true,releaseLock:()=>{healthReleased++;}})},
-  Session:{getEffectiveUser:()=>({getEmail:()=> 'owner@example.invalid'})},
+  LockService:{getScriptLock:()=>({tryLock:()=>true,waitLock:()=>{},releaseLock:()=>{healthReleased++;}})},
+  Session:{getActiveUser:()=>({getEmail:()=>healthActive}),getEffectiveUser:()=>({getEmail:()=>healthEffective})},
   MailApp:{getRemainingDailyQuota:()=>1,sendEmail:(...args)=>healthSent.push(args)},
   SpreadsheetApp:{openById:()=>({getSheetByName:n=>n==='FLIGHT_LEGS'?{}:null})},
   ScriptApp:{getProjectTriggers:()=>healthTriggers,newTrigger:n=>({timeBased:()=>({everyHours:h=>({create:()=>{assert.equal(h,1);healthTriggers.push({getHandlerFunction:()=>n});}})})}),deleteTrigger:t=>{healthTriggers=healthTriggers.filter(x=>x!==t)}}
@@ -212,7 +213,7 @@ const healthContext={
 vm.createContext(healthContext);vm.runInContext(source,healthContext);
 healthContext.getSpreadsheet_=()=>({getSheetByName:n=>n==='Overview'?healthOverview:null});
 healthContext.healthReadZone_=()=>healthZone;
-const tick=()=>healthContext.lexiSpendHealthEmail_();
+const tick=()=>healthContext.runHealthEmail();
 tick();assert.equal(healthReads,1);assert.equal(healthSent.length,0,'Healthy day including info count must not send');
 healthRows[2][1]=4;tick();assert.equal(healthReads,1,'One check per local day');
 healthNow=new Date('2031-02-02T01:07:00Z');tick();tick();
@@ -236,9 +237,11 @@ assert.equal(zoneAt('2031-02-10T22:00:00Z'),'America/Los_Angeles');
 assert.equal(zoneAt('2031-02-11T19:00:00Z'),'America/Los_Angeles');
 assert.equal(zoneAt('2031-02-11T21:00:00Z'),'America/Guatemala');
 assert.equal(zoneAt('2031-02-12T14:00:00Z',[]),'America/Guatemala');
-assert.throws(()=>healthContext.installLexiSpendHealthEmail_(),/Travel sheet ID/);
+assert.throws(()=>healthContext.installHealthEmail(),/Travel sheet ID/);
 healthProps.set('LEXI_SPEND_HEALTH_TRAVEL_ID','synthetic-private-id');
-healthContext.installLexiSpendHealthEmail_();healthContext.installLexiSpendHealthEmail_();
+healthTriggers.push({getHandlerFunction:()=> 'lexiSpendHealthEmail_'});
+healthContext.installHealthEmail();healthContext.installHealthEmail();
+assert.equal(healthTriggers[0].getHandlerFunction(),'runHealthEmail');
 assert.equal(healthTriggers.length,1,'Installation idempotent');
 assert.equal(healthSent.length,2,'Installation must send no email');
 console.log('PASS health email: local morning, transit zones, daily dedupe, zero/info silence, issues and errors, owner-only recipient, idempotent install.');
@@ -256,3 +259,25 @@ healthNow=new Date('2031-02-05T01:10:00Z');tick();
 assert.equal(healthSent.length,3,'Both new checks zero: no email');
 console.log('PASS health email includes both newly appended Overview checks and suppresses zero values.');
 
+
+// Editor-visible entry points must be top-level zero-argument declarations.
+// Reject public web-app callers before any check, email, or trigger mutation.
+for(const name of ['installHealthEmail','runHealthEmail']){
+  const node=ast.body.find(n=>n.type==='FunctionDeclaration'&&n.id.name===name);
+  assert.ok(node&&node.params.length===0,'Editor-visible no-argument function required');
+  for(const [active,effective] of [['','owner@example.invalid'],['other@example.invalid','owner@example.invalid'],['',''],['owner@example.invalid','']]){
+    healthActive=active;healthEffective=effective;
+    const snapshot=[healthReads,healthSent.length,healthTriggers.length,JSON.stringify([...healthProps])];
+    assert.throws(()=>healthContext[name](),/Owner authorization required/);
+    assert.deepEqual([healthReads,healthSent.length,healthTriggers.length,JSON.stringify([...healthProps])],snapshot);
+  }
+}
+healthActive=healthEffective='owner@example.invalid';
+healthContext.installHealthEmail();
+assert.equal(healthTriggers.length,1);
+assert.equal(healthTriggers[0].getHandlerFunction(),'runHealthEmail');
+for(const router of ['bridgeExecute','bridgeExecuteV2']){
+  for(const name of ['installHealthEmail','runHealthEmail'])
+    assert.throws(()=>securityContext[router](expectedCode,name,[]),/Unsupported/);
+}
+console.log('PASS editor-visible owner-only health entry points, blank/mismatched identity rejection, legacy trigger migration, RPC exclusion.');
