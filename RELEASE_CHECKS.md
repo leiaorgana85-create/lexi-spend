@@ -32,3 +32,7 @@ Distinguish: tested locally; frontend published; Apps Script updated by the user
 live save/retry verified. Use "fixed end to end" only for the last state.
 Retain the tested commit, check result, deployed versions and live outcome with the
 release or pull-request record. Do not commit private purchase details or credentials.
+
+## Weekly budget acceptance
+
+The backend uses seven-day blocks starting at the current stay-month start, capped at its end. The existing Budget calendar reconciliation checks those boundaries against the request date before totaling budgeted categories. When a stale backend or saved snapshot reports a different week, the UI must not attach the old total to the corrected dates; show a sync-needed state until the corrected calendar total is available. Check full and partial weeks, month crossings, and a failed Calendar refresh. Monthly totals and ledger rules are unchanged.

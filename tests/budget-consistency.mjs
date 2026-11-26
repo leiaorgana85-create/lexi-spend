@@ -95,6 +95,8 @@ function apiHarness(activeView) {
   const pending = w.SpendApi.call('getAppState',['2030-02-01','THB']);
   await turn();
   const summary = appState();
+  summary.summary.periodStart='2030-01-08';
+  summary.summary.periodEnd='2030-02-07';
   summary.summary.weekStart='2030-01-29';
   summary.summary.weekEnd='2030-02-04';
   reply({type:'lexi-spend-result',id:messages[0].id,ok:true,result:summary});
@@ -112,6 +114,50 @@ function apiHarness(activeView) {
   w.close();
 }
 
+// Older deployed backend supplies stay-anchored Nov 21–27; corrected period
+// starts Nov 24. Use only the transactions in the corrected week.
+{
+  const {w,messages,reply} = apiHarness('budget');
+  const pending = w.SpendApi.call('getAppState',['2026-11-26','THB']);
+  await turn();
+  const stale = appState();
+  Object.assign(stale.summary, {
+    periodStart:'2026-11-24',periodEnd:'2026-12-23',
+    weekStart:'2026-11-21',weekEnd:'2026-11-27',weeklyTotal:165.99
+  });
+  reply({type:'lexi-spend-result',id:messages[0].id,ok:true,result:stale});
+  await turn();
+  assert.equal(messages.length,2);
+  assert.equal(messages[1].parameters[0],'2026-11');
+  reply({type:'lexi-spend-result',id:messages[1].id,ok:true,result:{days:{
+    '2026-11-23':{transactions:[{category:'Food',usdAmount:94.94}]},
+    '2026-11-24':{transactions:[{category:'Food',usdAmount:71.05}]},
+    '2026-12-01':{transactions:[{category:'Food',usdAmount:10}]}
+  }}});
+  const result=await pending;
+  assert.equal(result.summary.weekStart,'2026-11-24');
+  assert.equal(result.summary.weekEnd,'2026-11-30');
+  assert.equal(result.summary.weeklyTotal,71.05);
+  assert.equal(result.summary.budgetTotal,stale.summary.budgetTotal);
+  w.close();
+}
+{
+  const {w,messages,reply} = apiHarness('budget');
+  const pending=w.SpendApi.call('getAppState',['2026-12-23','THB']);
+  await turn();
+  const stale=appState();
+  Object.assign(stale.summary,{periodStart:'2026-11-24',periodEnd:'2026-12-23',weekStart:'2026-12-19',weekEnd:'2026-12-25'});
+  reply({type:'lexi-spend-result',id:messages[0].id,ok:true,result:stale});
+  await turn();
+  reply({type:'lexi-spend-result',id:messages[1].id,ok:false,error:'Calendar unavailable'});
+  const result=await pending;
+  assert.equal(result.summary.weekStart,'2026-12-22');
+  assert.equal(result.summary.weekEnd,'2026-12-23');
+  assert.equal(result.summary.weeklyTotal,null,'never reuse an old week total on calendar failure');
+  w.close();
+}
+
+
 {
   const w = new Window({url:'https://example.test/lexi-spend/v2/'});
   w.document.body.innerHTML = `
@@ -121,7 +167,7 @@ function apiHarness(activeView) {
   let refreshes = 0;
   w.document.getElementById('refreshAppButton').addEventListener('click', () => refreshes++);
   w.eval(releaseSource);
-  assert.equal(w.document.getElementById('settingsFrontendVersion').textContent,'v1.16');
+  assert.equal(w.document.getElementById('settingsFrontendVersion').textContent,'v1.17');
   w.document.querySelector('[data-view="budget"]').click();
   await new Promise(resolve => w.setTimeout(resolve,1));
   assert.equal(refreshes,1,'opening Budget triggers its authoritative refresh');
@@ -133,4 +179,4 @@ function apiHarness(activeView) {
   w.close();
 }
 
-console.log('PASS Budget consistency: scoped refresh, budget-only weekly total, Shopping alias and v1.16 label.');
+console.log('PASS Budget consistency: scoped refresh, budget-only weekly total, Shopping alias and v1.17 label.');
