@@ -1,50 +1,52 @@
-name: Anonymous endpoint exposure check
+name: Anonymous browser surface verification
 on:
   pull_request:
     paths: ['.github/workflows/privacy-audit-snapshot.yml']
 permissions:
   contents: read
 jobs:
-  anonymous-requests:
+  browser-surface:
     runs-on: ubuntu-latest
-    timeout-minutes: 4
+    timeout-minutes: 5
     steps:
-      - name: Probe public endpoints without credentials or mutations
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Inspect public bridge client API without invoking any server function
         shell: bash
         run: |
-          python3 - <<'PY'
-          import urllib.request, urllib.parse, re, json, hashlib
-          base='https://raw.githubusercontent.com/leiaorgana85-create/'
-          def get_source(repo, ref, file):
-              with urllib.request.urlopen(base+repo+'/'+ref+'/'+file, timeout=20) as r:
-                  return r.read().decode()
-          def endpoint(repo,ref,file):
-              source=get_source(repo,ref,file)
-              return re.search(r'https://script\.google\.com/macros/s/[A-Za-z0-9_-]+/exec', source).group()
-          targets=[
-              ('spend-active',endpoint('lexi-spend','7bbfdcfae83dd4039203a0959036f2b70297d358','v2/api.js'),'spend'),
-              ('spend-old',endpoint('lexi-spend','548239d19aadf5edc00b4078032f7a101038aa21','v2/api.js'),'spend'),
-              ('travel-active',endpoint('lexi-travel','688dcc71268fd69cde915769f3531bb4f691215c','app.js'),'travel'),
-              ('notes-legacy-path',endpoint('lexi-travel','688dcc71268fd69cde915769f3531bb4f691215c','notes-app/app.js'),'notes')
-          ]
-          for label,url,kind in targets:
-              probes=[('GET-no-credential',None)] if kind=='spend' else [('GET-no-credential',None),('GET-invalid-credential',None),('POST-no-credential',b'action=ping'),('POST-invalid-credential',b'action=ping&key=audit-invalid-not-a-real-key')]
-              for test,body in probes:
-                  try:
-                      target=url if kind=='spend' else url+'?action=ping'+('&key=audit-invalid-not-a-real-key' if test=='GET-invalid-credential' else '')
-                      req=urllib.request.Request(target,data=body,headers={'User-Agent':'Mozilla/5.0','Cache-Control':'no-store','Content-Type':'application/x-www-form-urlencoded'})
-                      with urllib.request.urlopen(req,timeout=25) as res:
-                          content=res.read(300000)
-                          text=content.decode('utf-8','replace')
-                          try:
-                              j=json.loads(text)
-                              unauthorized=j.get('ok') is False and 'unauthor' in str(j.get('error','')).lower()
-                              result='AUTH_DENIED' if unauthorized else 'UNEXPECTED_JSON_REVIEW_REQUIRED'
-                          except Exception:
-                              result='HTML_BRIDGE_OR_WRAPPER' if 'google.script' in text or 'userCodeAppPanel' in text or 'Lexi Spend API' in text else 'OTHER_HTML_REVIEW_REQUIRED'
-                          print(label,test,'HTTP',res.status,'final_host',urllib.parse.urlparse(res.geturl()).hostname,'result',result,'body_not_logged',flush=True)
-                  except urllib.error.HTTPError as e:
-                      print(label,test,'HTTP',e.code,'HTTP_REJECTED_OR_UNAVAILABLE',flush=True)
-                  except Exception as e:
-                      print(label,test,'ERROR',type(e).__name__,flush=True)
-          PY
+          set -euo pipefail
+          mkdir -p /tmp/bridge-audit
+          npm install --prefix /tmp/bridge-audit --no-save --ignore-scripts playwright >/tmp/bridge-audit/npm.log 2>&1
+          cat >/tmp/bridge-audit/check.cjs <<'JS'
+          const { chromium }=require('playwright');
+          (async()=>{
+            const source=await (await fetch('https://raw.githubusercontent.com/leiaorgana85-create/lexi-spend/7bbfdcfae83dd4039203a0959036f2b70297d358/v2/api.js')).text();
+            const url=source.match(/https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec/)[0];
+            const browser=await chromium.launch({channel:'chrome',headless:true,args:['--no-sandbox']});
+            try {
+              const page=await browser.newPage();
+              await page.goto(url,{waitUntil:'domcontentloaded',timeout:45000});
+              let found=null;
+              for(let i=0;i<20&&!found;i++){
+                for(const frame of page.frames()){
+                  try {
+                    const result=await frame.evaluate(()=>{
+                      const r=window.google?.script?.run;
+                      if(!r)return null;
+                      return {gateway:typeof r.bridgeExecuteV2==='function',
+                        readSurface:['getAppState','getCashWallet','getDashboard','exportStayCsv'].filter(k=>typeof r[k]==='function').length,
+                        writeSurface:['logExpense','deleteExpense','addCashWithdrawal','deleteCashWithdrawal','uploadReceipt','deleteReceiptFile','runSchemaMaintenance'].filter(k=>typeof r[k]==='function').length,
+                        credentialSetup:typeof r.setupLexiSpendApiCode==='function'};
+                    });
+                    if(result&&result.gateway){found=result;break;}
+                  } catch {}
+                }
+                if(!found)await page.waitForTimeout(1000);
+              }
+              console.log('ANONYMOUS_BRIDGE_SURFACE',JSON.stringify(found));
+              if(!found)process.exitCode=2;
+            } finally {await browser.close();}
+          })().catch(e=>{console.log('PROBE_ERROR',e.name);process.exitCode=2;});
+          JS
+          node /tmp/bridge-audit/check.cjs
