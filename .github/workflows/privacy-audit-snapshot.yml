@@ -1,0 +1,44 @@
+name: Encrypted read-only repository audit
+on:
+  pull_request:
+    paths: ['.github/workflows/privacy-audit-snapshot.yml']
+permissions:
+  contents: read
+jobs:
+  capture-public-history:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Capture reachable public Git history without printing contents
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/audit-mirrors /tmp/audit-output
+          for repo in lexi-spend lexi-travel; do
+            git clone --quiet --mirror "https://github.com/leiaorgana85-create/$repo.git" "/tmp/audit-mirrors/$repo.git"
+            git -C "/tmp/audit-mirrors/$repo.git" fetch --quiet origin '+refs/pull/*/head:refs/pull/*/head' '+refs/pull/*/merge:refs/pull/*/merge'
+            git -C "/tmp/audit-mirrors/$repo.git" fsck --full --no-reflogs >/tmp/fsck-$repo.txt 2>&1
+            printf '%s refs=%s commits=%s\n' "$repo" "$(git -C "/tmp/audit-mirrors/$repo.git" for-each-ref | wc -l)" "$(git -C "/tmp/audit-mirrors/$repo.git" rev-list --all --count)"
+          done
+          cat >/tmp/audit-public.pem <<'EOF'
+          -----BEGIN PUBLIC KEY-----
+          MIIBojANBgkqhkiG9w0BAQEFAAOCAY8AMIIBigKCAYEA3jqHRH0F2BMu5wCAG/L3
+          JYmkvQnH4g+aLJ1TZOPYOgXEej2j7DYCPhfbX1m6yNCVBYDgX0BtyNHW7pmTItkJ
+          p/f7UL7ujKH1i+UZC/6CVR0eEp6CATg9geBrDEg1jkicYCqfwOmi681+nViLrZ5t
+          ZZRLTUS2JmqcMdx/pR/1EFQchLbD59HR/UQaqepDJMnvSQy+4G1OT1LGKBzGDLQd
+          KNm1oLp3pmw6Z365cN3ItaxfH7JVQnMcRriZOeghBsZENr8SUfQIyNFNrTI1jdss
+          8do/SngWNU6szJoh/XE/HChTJwcx2kiDO6Z4tZdpCVLG9Hti3UkmcubpBLVjXd75
+          2nT7L5cju1lTcCsAIQNjlM7z/0OR4wOcpStBMHnlWuT2kCBKUrnsvpfRidUoiqF2
+          6rPt2WG8Azhxcb7pFRM7HRik4V4cBUXquV43s1i23MuT3h07RSJ3KLQL1mj5sfXW
+          nBpiGVQy5+V8g+6CiG4GCwM62/bzCCaaHxlsefS0jdBRAgMBAAE=
+          -----END PUBLIC KEY-----
+          EOF
+          openssl rand -hex 32 >/tmp/audit-pass
+          openssl pkeyutl -encrypt -pubin -inkey /tmp/audit-public.pem -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256 -in /tmp/audit-pass -out /tmp/audit-output/key.enc
+          tar -C /tmp/audit-mirrors -czf - . | openssl enc -aes-256-cbc -pbkdf2 -iter 200000 -salt -pass file:/tmp/audit-pass -out /tmp/audit-output/mirrors.enc
+          rm -rf /tmp/audit-mirrors /tmp/audit-pass
+      - uses: actions/upload-artifact@v4
+        with:
+          name: encrypted-public-history
+          path: /tmp/audit-output/
+          retention-days: 1
