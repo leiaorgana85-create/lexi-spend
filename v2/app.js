@@ -313,8 +313,12 @@
   }
 
   function renderBudget() {
-    const summary = state.app?.summary;
-    if (!summary) return;
+    const original = state.app?.summary;
+    if (!original) return;
+    const expected = SpendApi.budgetWeekForDate?.(original, localIsoDate());
+    const mismatch = Boolean(expected && (original.weekStart !== expected.weekStart || original.weekEnd !== expected.weekEnd));
+    const summary = mismatch ? { ...original, ...expected, weeklyTotal:null } : original;
+    const weeklyAvailable = summary.weeklyTotal != null;
 
     const periodDays = Math.max(1, Number(summary.periodDays) || 1);
     const weekDays = Math.max(1, inclusiveIsoDays(summary.weekStart, summary.weekEnd) || Math.min(7, periodDays));
@@ -330,12 +334,12 @@
     setText('budgetPeriodDays', `${periodRemaining.remaining} of ${periodRemaining.total} days remaining`);
     setText('budgetTotalValue', money(summary.budgetTotal));
     setText('budgetTotalSub', money(summary.budgetLimit));
-    setText('weeklySpend', money(summary.weeklyTotal));
+    setText('weeklySpend', weeklyAvailable ? money(summary.weeklyTotal) : 'Sync needed');
     setText('weeklyBudget', money(weeklyBudget));
     setText('allTrackedSpend', money(summary.stayTotal));
 
     const weeklyBar = $('budgetWeeklyProgress');
-    weeklyBar.style.width = `${Math.min(100, Math.max(0, weekRatio * 100))}%`;
+    weeklyBar.style.width = weeklyAvailable ? `${Math.min(100, Math.max(0, weekRatio * 100))}%` : '0%';
     weeklyBar.className = `progress-fill${weekRatio > 1 ? ' over' : weekRatio >= .8 ? ' near' : ''}`;
 
     const periodBar = $('budgetOverallProgress');
