@@ -114,45 +114,45 @@ function apiHarness(activeView) {
   w.close();
 }
 
-// Older deployed backend supplies stay-anchored Nov 21–27; corrected period
-// starts Nov 24. Use only the transactions in the corrected week.
+// Older deployed backend supplies stay-anchored Apr 21–27; corrected period
+// starts Apr 24. Use only the transactions in the corrected week.
 {
   const {w,messages,reply} = apiHarness('budget');
-  const pending = w.SpendApi.call('getAppState',['2026-11-26','THB']);
+  const pending = w.SpendApi.call('getAppState',['2031-04-26','THB']);
   await turn();
   const stale = appState();
   Object.assign(stale.summary, {
-    periodStart:'2026-11-24',periodEnd:'2026-12-23',
-    weekStart:'2026-11-21',weekEnd:'2026-11-27',weeklyTotal:165.99
+    periodStart:'2031-04-24',periodEnd:'2031-05-23',
+    weekStart:'2031-04-21',weekEnd:'2031-04-27',weeklyTotal:125
   });
   reply({type:'lexi-spend-result',id:messages[0].id,ok:true,result:stale});
   await turn();
   assert.equal(messages.length,2);
-  assert.equal(messages[1].parameters[0],'2026-11');
+  assert.equal(messages[1].parameters[0],'2031-04');
   reply({type:'lexi-spend-result',id:messages[1].id,ok:true,result:{days:{
-    '2026-11-23':{transactions:[{category:'Food',usdAmount:94.94}]},
-    '2026-11-24':{transactions:[{category:'Food',usdAmount:71.05}]},
-    '2026-12-01':{transactions:[{category:'Food',usdAmount:10}]}
+    '2031-04-23':{transactions:[{category:'Food',usdAmount:100}]},
+    '2031-04-24':{transactions:[{category:'Food',usdAmount:25}]},
+    '2031-05-01':{transactions:[{category:'Food',usdAmount:10}]}
   }}});
   const result=await pending;
-  assert.equal(result.summary.weekStart,'2026-11-24');
-  assert.equal(result.summary.weekEnd,'2026-11-30');
-  assert.equal(result.summary.weeklyTotal,71.05);
+  assert.equal(result.summary.weekStart,'2031-04-24');
+  assert.equal(result.summary.weekEnd,'2031-04-30');
+  assert.equal(result.summary.weeklyTotal,25);
   assert.equal(result.summary.budgetTotal,stale.summary.budgetTotal);
   w.close();
 }
 {
   const {w,messages,reply} = apiHarness('budget');
-  const pending=w.SpendApi.call('getAppState',['2026-12-23','THB']);
+  const pending=w.SpendApi.call('getAppState',['2031-05-23','THB']);
   await turn();
   const stale=appState();
-  Object.assign(stale.summary,{periodStart:'2026-11-24',periodEnd:'2026-12-23',weekStart:'2026-12-19',weekEnd:'2026-12-25'});
+  Object.assign(stale.summary,{periodStart:'2031-04-24',periodEnd:'2031-05-23',weekStart:'2031-05-19',weekEnd:'2031-05-25'});
   reply({type:'lexi-spend-result',id:messages[0].id,ok:true,result:stale});
   await turn();
   reply({type:'lexi-spend-result',id:messages[1].id,ok:false,error:'Calendar unavailable'});
   const result=await pending;
-  assert.equal(result.summary.weekStart,'2026-12-22');
-  assert.equal(result.summary.weekEnd,'2026-12-23');
+  assert.equal(result.summary.weekStart,'2031-05-22');
+  assert.equal(result.summary.weekEnd,'2031-05-23');
   assert.equal(result.summary.weeklyTotal,null,'never reuse an old week total on calendar failure');
   w.close();
 }
