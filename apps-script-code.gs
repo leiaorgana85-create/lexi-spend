@@ -111,7 +111,7 @@ function bridgeExecute(
   );
 }
 
-function getAppState(
+function getAppState_(
   today,
   cashCurrency
 ) {
@@ -231,7 +231,7 @@ function getAppState(
   };
 }
 
-function previewUsd(
+function previewUsd_(
   amount,
   currency,
   date
@@ -291,7 +291,7 @@ function previewUsd(
   Drive receipt support. It forces Google's Drive permission
   prompt and verifies the configured receipt folder.
 */
-function authorizeDriveAccess() {
+function authorizeDriveAccess_() {
   const folder =
     DriveApp.getFolderById(
       getReceiptRootFolderId_()
@@ -306,7 +306,7 @@ function authorizeDriveAccess() {
   };
 }
 
-function uploadReceipt(data) {
+function uploadReceipt_(data) {
   if (!data) {
     throw new Error(
       'Missing receipt data.'
@@ -360,7 +360,7 @@ function uploadReceipt(data) {
         .test(msg)
     ) {
       throw new Error(
-        'Google Drive permission is not authorized yet. In Apps Script, run authorizeDriveAccess once and approve the Drive permission.'
+        'Google Drive permission is not authorized yet. In Apps Script, run authorizeDriveAccess_ once and approve the Drive permission.'
       );
     }
 
@@ -368,7 +368,7 @@ function uploadReceipt(data) {
   }
 }
 
-function deleteReceiptFile(fileId) {
+function deleteReceiptFile_(fileId) {
   const id =
     String(
       fileId || ''
@@ -389,7 +389,7 @@ function deleteReceiptFile(fileId) {
   };
 }
 
-function logExpense(data) {
+function logExpense_(data) {
   const serverStartMs = Date.now();
   if (!data) {
     throw new Error(
@@ -494,7 +494,7 @@ function logExpense(data) {
   }
 
   /*
-    getAppState() already validates/migrates the sheet at app load.
+    getAppState_() already validates/migrates the sheet at app load.
     Avoid repeating the expensive schema/formatting work on every save.
   */
   const sheet =
@@ -608,7 +608,7 @@ function logExpense(data) {
   };
 }
 
-function deleteExpense(
+function deleteExpense_(
   entryId,
   today,
   stayContext
@@ -745,7 +745,7 @@ function deleteExpense(
   };
 }
 
-function addCashWithdrawal(data) {
+function addCashWithdrawal_(data) {
   if (!data) {
     throw new Error(
       'Missing withdrawal data.'
@@ -912,11 +912,11 @@ function addCashWithdrawal(data) {
   };
 }
 
-function deleteCashEntry(entryId) {
-  return deleteCashWithdrawal(entryId);
+function deleteCashEntry_(entryId) {
+  return deleteCashWithdrawal_(entryId);
 }
 
-function deleteCashWithdrawal(
+function deleteCashWithdrawal_(
   entryId
 ) {
   const id =
@@ -1020,7 +1020,7 @@ function deleteCashWithdrawal(
   };
 }
 
-function getCashWallet(
+function getCashWallet_(
   currency,
   today
 ) {
@@ -1089,7 +1089,7 @@ function getCashWallet(
   );
 }
 
-function getDashboard(
+function getDashboard_(
   today,
   currency
 ) {
@@ -1664,7 +1664,7 @@ function getSpendingSummary_(
 
         Travel & Irregular is no longer a before-quit app category.
         An old/queued v13.12.13 payload may still arrive with that exact
-        category string. logExpense() intentionally saves it unchanged;
+        category string. logExpense_() intentionally saves it unchanged;
         summaries exclude it from totals and surface a move-to-Fixed-costs
         warning instead of silently dropping the row.
       */
@@ -1820,7 +1820,7 @@ function getSpendingSummary_(
   };
 }
 
-function exportStayCsv() {
+function exportStayCsv_() {
   ensureSchema_();
 
   const stay =
@@ -2064,7 +2064,7 @@ function validateCashSchema_() {
   }
 }
 
-function runSchemaMaintenance() {
+function runSchemaMaintenance_() {
   ensureSchema_();
   ensureCashSheet_();
   return { ok: true, appVersion: APP_VERSION };
@@ -3587,7 +3587,7 @@ function roundMoney_(n) {
   );
 }
 
-function setupLexiSpendApiCode() {
+function setupLexiSpendApiCode_() {
   const props = PropertiesService.getScriptProperties();
   const apiCode =
     Utilities.getUuid().replace(/-/g, '') +
@@ -3605,25 +3605,25 @@ function setupLexiSpendApiCode() {
 function runLexiSpendApiFunction_(functionName, parameters) {
   switch (functionName) {
     case 'getAppState':
-      return getAppState.apply(null, parameters);
+      return getAppState_.apply(null, parameters);
     case 'previewUsd':
-      return previewUsd.apply(null, parameters);
+      return previewUsd_.apply(null, parameters);
     case 'getDashboard':
-      return getDashboard.apply(null, parameters);
+      return getDashboard_.apply(null, parameters);
     case 'getCashWallet':
-      return getCashWallet.apply(null, parameters);
+      return getCashWallet_.apply(null, parameters);
     case 'uploadReceipt':
-      return uploadReceipt.apply(null, parameters);
+      return uploadReceipt_.apply(null, parameters);
     case 'deleteReceiptFile':
-      return deleteReceiptFile.apply(null, parameters);
+      return deleteReceiptFile_.apply(null, parameters);
     case 'logExpense':
-      return logExpense.apply(null, parameters);
+      return logExpense_.apply(null, parameters);
     case 'deleteExpense':
-      return deleteExpense.apply(null, parameters);
+      return deleteExpense_.apply(null, parameters);
     case 'addCashWithdrawal':
-      return addCashWithdrawal.apply(null, parameters);
+      return addCashWithdrawal_.apply(null, parameters);
     case 'deleteCashWithdrawal':
-      return deleteCashWithdrawal.apply(null, parameters);
+      return deleteCashWithdrawal_.apply(null, parameters);
     default:
       throw new Error('Unsupported API function.');
   }
