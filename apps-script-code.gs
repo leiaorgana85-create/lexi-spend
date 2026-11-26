@@ -3750,7 +3750,26 @@ function doPost(e) {
 // Private, owner-installed exception-only daily health check. Not an RPC action.
 const HEALTH_TRAVEL_ID_PROPERTY_ = 'LEXI_SPEND_HEALTH_TRAVEL_ID';
 const HEALTH_DAYS_PROPERTY_ = 'LEXI_SPEND_HEALTH_CHECKED_DAYS';
-const HEALTH_HANDLER_ = 'lexiSpendHealthEmail_';
+const HEALTH_HANDLER_ = 'runHealthEmail';
+const HEALTH_LEGACY_HANDLER_ = 'lexiSpendHealthEmail_';
+
+// Public editor entry points must reject blank or mismatched active identity
+// before reading properties, installing triggers, or sending mail.
+function assertHealthOwner_() {
+  const active = String(Session.getActiveUser().getEmail() || '').trim().toLowerCase();
+  const effective = String(Session.getEffectiveUser().getEmail() || '').trim().toLowerCase();
+  if (!active || !effective || active !== effective) throw new Error('Owner authorization required.');
+}
+
+function installHealthEmail() {
+  assertHealthOwner_();
+  return installLexiSpendHealthEmail_();
+}
+
+function runHealthEmail() {
+  assertHealthOwner_();
+  return lexiSpendHealthEmail_();
+}
 
 function healthZoneValid_(zone) {
   try {
@@ -3851,9 +3870,15 @@ function installLexiSpendHealthEmail_() {
   if (!travelId || !SpreadsheetApp.openById(travelId).getSheetByName('FLIGHT_LEGS')) throw new Error('Configure the private Travel sheet ID first.');
   if (!Session.getEffectiveUser().getEmail()) throw new Error('Owner email unavailable.');
   MailApp.getRemainingDailyQuota(); // Requests send-mail authorization without sending.
-  const triggers=ScriptApp.getProjectTriggers().filter(t=>t.getHandlerFunction()===HEALTH_HANDLER_);
-  if(!triggers.length) ScriptApp.newTrigger(HEALTH_HANDLER_).timeBased().everyHours(1).create();
-  else triggers.slice(1).forEach(t=>ScriptApp.deleteTrigger(t));
+  const lock=LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    const triggers=ScriptApp.getProjectTriggers();
+    const current=triggers.filter(t=>t.getHandlerFunction()===HEALTH_HANDLER_);
+    if(!current.length) ScriptApp.newTrigger(HEALTH_HANDLER_).timeBased().everyHours(1).create();
+    else current.slice(1).forEach(t=>ScriptApp.deleteTrigger(t));
+    triggers.filter(t=>t.getHandlerFunction()===HEALTH_LEGACY_HANDLER_).forEach(t=>ScriptApp.deleteTrigger(t));
+  } finally { lock.releaseLock(); }
 }
 
 function lexiSpendHealthEmail_() {
