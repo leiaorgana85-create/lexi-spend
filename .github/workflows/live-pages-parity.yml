@@ -1,0 +1,27 @@
+name: Live Pages release parity
+on:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  live-parity:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify public release assets match this source commit
+        run: |
+          for attempt in 1 2 3 4 5 6 7 8; do
+            if node scripts/check-version.cjs --live; then
+              echo "Live release parity confirmed"
+              exit 0
+            fi
+            echo "Public Pages is not yet on this commit; retry $attempt"
+            sleep 25
+          done
+          echo "FAIL: Public Pages does not match this source commit"
+          exit 1
