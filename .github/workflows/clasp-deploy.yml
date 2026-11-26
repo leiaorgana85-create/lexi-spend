@@ -1,0 +1,63 @@
+name: Spend clasp deployment
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+  checks: read
+jobs:
+  deployment-safety:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+      - run: node scripts/deploy-apps-script.cjs --self-test
+      - name: No credentials / disabled deployment
+        run: node scripts/deploy-apps-script.cjs
+      - name: Enabled with missing secrets must fail
+        run: |
+          if DEPLOY_ENABLED=true node scripts/deploy-apps-script.cjs; then
+            echo "Unsafe missing-secret success"; exit 1
+          fi
+  production:
+    needs: deployment-safety
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && vars.CLASP_DEPLOY_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    concurrency:
+      group: spend-apps-script-production
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+      - name: Verify exact main commit passed required checks
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for i in $(seq 1 90); do
+            if [ "$(git ls-remote origin refs/heads/main | cut -f1)" != "$GITHUB_SHA" ]; then exit 1; fi
+            checks=$(gh api --paginate "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/check-runs?per_page=100" --jq '.check_runs[] | [.name,.conclusion] | @tsv')
+            if printf '%s\n' "$checks" | grep -qx $'regression-checks\tsuccess' && printf '%s\n' "$checks" | grep -qx $'staged-endpoint\tsuccess'; then
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "Required checks did not pass for this exact SHA"; exit 1
+      - run: npm install --global --ignore-scripts --no-audit --no-fund @google/clasp@3.4.1
+      - name: Reconcile and update existing deployment
+        env:
+          DEPLOY_ENABLED: ${{ vars.CLASP_DEPLOY_ENABLED }}
+          CLASPRC_JSON: ${{ secrets.CLASPRC_JSON }}
+          SCRIPT_ID: ${{ secrets.SPEND_SCRIPT_ID }}
+          DEPLOYMENT_ID: ${{ secrets.SPEND_DEPLOYMENT_ID }}
+        run: node scripts/deploy-apps-script.cjs
