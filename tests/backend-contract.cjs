@@ -243,3 +243,16 @@ assert.equal(healthTriggers.length,1,'Installation idempotent');
 assert.equal(healthSent.length,2,'Installation must send no email');
 console.log('PASS health email: local morning, transit zones, daily dedupe, zero/info silence, issues and errors, owner-only recipient, idempotent install.');
 
+// The live Overview gained two post-cutoff checks. The generic reader
+// must include appended labels, report both values, and stay silent at zero.
+healthRows.splice(healthRows.length-1,0,['Non-standard FX source',3],['Possible duplicate transactions',4]);
+healthRows[2][1]=0;healthRows[4][1]=0;
+healthNow=new Date('2031-02-04T01:10:00Z');
+tick();tick();
+assert.equal(healthSent.length,3);
+assert.equal(healthSent[2][2],'Non-standard FX source: 3\nPossible duplicate transactions: 4');
+healthRows[healthRows.length-3][1]=0;healthRows[healthRows.length-2][1]=0;
+healthNow=new Date('2031-02-05T01:10:00Z');tick();
+assert.equal(healthSent.length,3,'Both new checks zero: no email');
+console.log('PASS health email includes both newly appended Overview checks and suppresses zero values.');
+
