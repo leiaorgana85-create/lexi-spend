@@ -93,7 +93,7 @@ const shared = {
   context.getUsdRate_=shared.getUsdRate_;
   context.roundMoney_=money;
   context.getCashSheet_=()=>f.sheet;
-  const result=context.addCashWithdrawal(data);
+  const result=context.addCashWithdrawal_(data);
   assert.equal(result.ok,true);
   assert.equal(f.rows.length,969);
   assert.equal(f.rows[968][11],'legacy-wallet970');

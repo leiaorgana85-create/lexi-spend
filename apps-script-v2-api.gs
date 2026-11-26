@@ -12,7 +12,7 @@ function bridgeExecuteV2(apiCode, functionName, parameters) {
     case 'getAppState':
       return v2GetAppState_.apply(null, args);
     case 'previewUsd':
-      return previewUsd.apply(null, args);
+      return previewUsd_.apply(null, args);
     case 'getCalendarMonth':
       return v2GetCalendarMonth_.apply(null, args);
     case 'uploadReceipt':
@@ -94,7 +94,7 @@ function v2ExtendRecentTransactions_(recent, limit) {
 
 function v2GetAppState_(today, cashCurrency) {
   v2EnsureActualUsdSchema_();
-  const result = getAppState(today, cashCurrency);
+  const result = getAppState_(today, cashCurrency);
   result.supportsActualUsd = true;
   result.recent = v2ExtendRecentTransactions_(result.recent, 4).map(tx => {
     const found = v2FindTransactionById_(getSheet_(), tx.entryId);
@@ -361,7 +361,7 @@ function v2DeleteExpense_(entryId, today, stayContext) {
     }
 
     receiptFileId = String(found.row[14] || '').trim();
-    result = deleteExpense(id, today, stayContext);
+    result = deleteExpense_(id, today, stayContext);
     result.recent = v2ExtendRecentTransactions_(result.recent, 4).map(tx => {
       const found = v2FindTransactionById_(getSheet_(), tx.entryId);
       return found ? v2TransactionView_(found.row) : tx;
@@ -508,7 +508,7 @@ function v2DeleteCashWithdrawal_(entryId) {
     if (!v2FindCashById_(sheet, id)) {
       return { ok:true, alreadyDeleted:true };
     }
-    return deleteCashWithdrawal(id);
+    return deleteCashWithdrawal_(id);
   } finally {
     lock.releaseLock();
   }

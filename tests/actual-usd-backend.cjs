@@ -21,7 +21,7 @@ const context={Number,String,Math,Array,Set,Date,console,
  LockService:{getScriptLock:()=>({waitLock(){},releaseLock(){}})},
  SpreadsheetApp:{flush(){rows.forEach(row=>{if(typeof row[7]==='string'&&row[7].startsWith('='))row[7]=row[15]===''?money(row[4]*row[6]):money(row[15]);});}},
  getSpendingSummary_:(today,rs)=>({weeklyTotal:money(rs.reduce((sum,row)=>sum+row[7],0))}),
- getCashState_:()=>({balance:100}),getAppState:()=>({recent:[]})
+ getCashState_:()=>({balance:100}),getAppState_:()=>({recent:[]})
 };vm.createContext(context);vm.runInContext(fs.readFileSync(require('path').join(__dirname,'../apps-script-v2-api.gs'),'utf8'),context);
 function payload(id,actualUsd){return {entryId:id,date:'2026-10-24',merchant:'Fixture',category:'Food',paymentMethod:'Card',amount:100,currency:'THB',actualUsd};}
 for(const [id,value,expected] of [['blank001','',3],['actual01',2.8,2.8],['zero0001',0,0]]){
@@ -109,7 +109,7 @@ legacyContext.getUsdRate_=()=>({rate:.03,source:'reference',effectiveDate:'2026-
 legacyContext.roundMoney_=money;
 legacyContext.getRecentTransactions_=()=>[];
 legacyContext.getSpendingSummary_=()=>({});
-const legacySave=legacyContext.logExpense({date:'2026-10-24',today:'2026-10-24',merchant:'Fixture',category:'Food',paymentMethod:'Card',amount:0,currency:'THB'});
+const legacySave=legacyContext.logExpense_({date:'2026-10-24',today:'2026-10-24',merchant:'Fixture',category:'Food',paymentMethod:'Card',amount:0,currency:'THB'});
 assert.equal(legacySave.ok,true);
 assert.equal(legacyRows.length,907);
 assert.equal(legacyRows[906][12],'legacy-capacity-908');

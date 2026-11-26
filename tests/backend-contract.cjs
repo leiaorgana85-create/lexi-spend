@@ -38,7 +38,7 @@ const setup = { getRange(range) { return {
     ['GLP-1','','no limit'],['Housing',0,'excluded']
   ]; }
 }; }};
-const spreadsheet = { getSheetByName(name) { assert.equal(name,'Setup');return setup; } };
+const spreadsheet = { getSpreadsheetTimeZone:()=> 'Etc/UTC', getSheetByName(name) { assert.equal(name,'Setup');return setup; } };
 const context = {
   PropertiesService:{getScriptProperties:()=>({getProperty:()=> 'fixture-spreadsheet'})},
   SpreadsheetApp:{openById:()=>spreadsheet},console
@@ -61,3 +61,43 @@ assert.equal(reads,1,'Canonical budget cache must be shared');
 assert.throws(()=>context.v2LogExpense_({entryId:'fixture01',date:'2026-10-25',today:'2026-10-25',
  merchant:'Fixture',category:'Housing',paymentMethod:'Card',amount:10,currency:'THB'}),/Invalid category/);
 console.log('PASS backend contract: all shipped GS dependencies resolve; removed-helper negative control; real canonical budget/category helpers without application mocks.');
+
+// Only explicitly authenticated RPC entry points may be public. doGet is a
+// data-free HTML bridge; doPost validates the API credential before dispatch.
+const publicFunctions = ast.body.filter(n=>n.type==='FunctionDeclaration' && !n.id.name.endsWith('_')).map(n=>n.id.name).sort();
+assert.deepEqual(publicFunctions,['authBridgeExecuteSession','authGoogleBootstrap','bridgeExecute','bridgeExecuteV2','doGet','doPost']);
+const securityCalls=[];
+const expectedCode='synthetic-test-code';
+const crypto=require('node:crypto');
+const hash=s=>crypto.createHash('sha256').update(s).digest('hex');
+const securityContext={
+  console,
+  PropertiesService:{getScriptProperties:()=>({getProperty:key=>key==='LEXI_SPEND_API_CODE_SHA256'?hash(expectedCode):null})},
+  Utilities:{DigestAlgorithm:{SHA_256:'sha256'},Charset:{UTF_8:'utf8'},computeDigest:(_,s)=>Array.from(crypto.createHash('sha256').update(s).digest())},
+  ContentService:{MimeType:{JSON:'json'},createTextOutput:text=>({text,setMimeType(){return this;}})},
+  HtmlService:{XFrameOptionsMode:{ALLOWALL:'allowall'},createHtmlOutputFromFile:name=>({name,setTitle(){return this;},setXFrameOptionsMode(){return this;}})}
+};
+vm.createContext(securityContext);vm.runInContext(source,securityContext);
+securityContext.previewUsd_= (...args)=>{securityCalls.push(args);return {ok:true};};
+for(const router of ['bridgeExecute','bridgeExecuteV2']){
+  for(const bad of ['', 'invalid']){
+    assert.throws(()=>securityContext[router](bad,'previewUsd',[]),/Missing|Invalid/);
+  }
+  assert.deepEqual(securityContext[router](expectedCode,'previewUsd',[]),{ok:true});
+  assert.throws(()=>securityContext[router](expectedCode,'setupLexiSpendApiCode',[]),/Unsupported/);
+}
+for(const bad of ['', 'invalid']){
+  const response=securityContext.doPost({postData:{contents:JSON.stringify({apiCode:bad,functionName:'previewUsd'})}});
+  assert.equal(JSON.parse(response.text).ok,false);
+}
+assert.throws(()=>securityContext.authBridgeExecuteSession('','previewUsd',[]),/Invalid/);
+assert.throws(()=>securityContext.authGoogleBootstrap('','',''),/missing/);
+assert.equal(securityContext.doGet().name,'Bridge');
+assert.equal(securityCalls.length,2,'Only the two authorized requests may invoke the stub');
+const weeklyStay={name:'Fixture',start:'2031-04-24',end:'2031-06-23',status:'active'};
+const weeklyRows=[['2031-05-23','Fixture','Food','Card',99,'USD',1,99],['2031-05-24','Fixture','Food','Card',12,'USD',1,12]];
+const week= context.getSpendingSummary_('2031-05-24',weeklyRows,weeklyStay);
+assert.equal(week.weekStart,'2031-05-24');
+assert.equal(week.weekEnd,'2031-05-30');
+assert.equal(week.weeklyTotal,12);
+console.log('PASS authenticated entry points, rejection and stay-month week isolation');
