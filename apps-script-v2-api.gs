@@ -372,7 +372,7 @@ function v2DeleteExpense_(entryId, today, stayContext) {
 
   if (receiptFileId) {
     try {
-      DriveApp.getFileById(receiptFileId).setTrashed(true);
+      trashReceiptInRoot_(receiptFileId);
       result.receiptDeleted = true;
     } catch (error) {
       result.receiptDeleted = false;
@@ -383,14 +383,7 @@ function v2DeleteExpense_(entryId, today, stayContext) {
 }
 
 function v2DeleteReceiptFile_(fileId) {
-  const id = String(fileId || '').trim();
-  if (!id) return { ok:true, alreadyMissing:true };
-  try {
-    DriveApp.getFileById(id).setTrashed(true);
-    return { ok:true, alreadyMissing:false };
-  } catch (error) {
-    return { ok:true, alreadyMissing:true };
-  }
+  return trashReceiptInRoot_(fileId);
 }
 
 function v2AddCashWithdrawal_(data) {
