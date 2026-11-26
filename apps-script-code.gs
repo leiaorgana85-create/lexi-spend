@@ -368,25 +368,39 @@ function uploadReceipt_(data) {
   }
 }
 
-function deleteReceiptFile_(fileId) {
-  const id =
-    String(
-      fileId || ''
-    ).trim();
+// Verify actual Drive ancestry, not the supplied ID or a folder name.
+function trashReceiptInRoot_(fileId) {
+  const id = String(fileId || '').trim();
+  if (!id) return { ok:true, alreadyMissing:true };
 
-  if (!id) {
-    return {
-      ok: true
-    };
+  const rootId = getReceiptRootFolderId_();
+  const file = DriveApp.getFileById(id);
+  const pending = [];
+  const seen = new Set();
+  function addParents(item) {
+    const parents = item.getParents();
+    while (parents.hasNext()) pending.push(parents.next());
   }
 
-  DriveApp
-    .getFileById(id)
-    .setTrashed(true);
+  addParents(file);
+  while (pending.length) {
+    const parent = pending.pop();
+    const parentId = parent.getId();
+    if (parentId === rootId) {
+      if (file.isTrashed()) return { ok:true, alreadyMissing:true };
+      file.setTrashed(true);
+      return { ok:true, alreadyMissing:false };
+    }
+    if (seen.has(parentId)) continue;
+    seen.add(parentId);
+    addParents(parent);
+  }
+  throw new Error('Receipt deletion refused: file is outside the configured receipt folder.');
+}
 
-  return {
-    ok: true
-  };
+function deleteReceiptFile_(fileId) {
+  trashReceiptInRoot_(fileId);
+  return { ok:true };
 }
 
 function logExpense_(data) {

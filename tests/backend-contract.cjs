@@ -101,3 +101,88 @@ assert.equal(week.weekStart,'2031-05-24');
 assert.equal(week.weekEnd,'2031-05-30');
 assert.equal(week.weeklyTotal,12);
 console.log('PASS authenticated entry points, rejection and stay-month week isolation');
+
+// Receipt deletion: exercise real RPC routes and the real shared ancestry guard.
+// All Drive and ledger operations below are isolated synthetic service fixtures.
+const iterator = items => { let n=0; return {hasNext:()=>n<items.length,next:()=>items[n++]}; };
+const folder = (id, parents=[]) => ({getId:()=>id,getParents:()=>iterator(parents)});
+const receiptRoot=folder('receipt-root');
+const year=folder('year',[receiptRoot]);
+const month=folder('month',[year]);
+const outside=folder('other-root');
+const lookalike=folder('other-month',[outside]);
+const loop=folder('loop');
+loop.getParents=()=>iterator([loop]);
+const trashCalls=[];
+let configuredRoot='receipt-root';
+const filesById=new Map();
+function addFile(id,parents,trashed=false) {
+  const file={getParents:()=>iterator(parents),isTrashed:()=>trashed,setTrashed(v){assert.equal(v,true);trashed=true;trashCalls.push(id);}};
+  filesById.set(id,file);
+  return file;
+}
+addFile('direct',[receiptRoot]);
+addFile('nested',[month]);
+addFile('already',[month],true);
+addFile('outside',[lookalike]);
+addFile('parentless',[]);
+addFile('cyclic',[loop]);
+addFile('denied',[{getId:()=> 'denied-folder',getParents:()=>{throw new Error('Permission denied');}}]);
+addFile('trash-error',[month]).setTrashed=()=>{throw new Error('Trash failed');};
+let fileReads=0;
+const receiptContext={
+  console,
+  PropertiesService:{getScriptProperties:()=>({getProperty:key=>key==='LEXI_SPEND_API_CODE_SHA256'?hash(expectedCode):configuredRoot})},
+  Utilities:securityContext.Utilities,
+  DriveApp:{getFileById:id=>{fileReads++;if(!filesById.has(id))throw new Error('File unavailable');return filesById.get(id);}},
+  LockService:{getScriptLock:()=>({waitLock(){},releaseLock(){}})}
+};
+vm.createContext(receiptContext);vm.runInContext(source,receiptContext);
+for(const router of ['bridgeExecute','bridgeExecuteV2']){
+  assert.throws(()=>receiptContext[router]('','deleteReceiptFile',['outside']),/Missing|Invalid/);
+}
+assert.equal(fileReads,0,'Unauthenticated deletion never touches Drive');
+assert.equal(receiptContext.bridgeExecute(expectedCode,'deleteReceiptFile',['direct']).ok,true);
+assert.equal(receiptContext.bridgeExecuteV2(expectedCode,'deleteReceiptFile',['nested']).alreadyMissing,false);
+assert.equal(receiptContext.bridgeExecuteV2(expectedCode,'deleteReceiptFile',['nested']).alreadyMissing,true);
+assert.equal(receiptContext.bridgeExecuteV2(expectedCode,'deleteReceiptFile',['already']).alreadyMissing,true);
+assert.equal(receiptContext.bridgeExecuteV2(expectedCode,'deleteReceiptFile',['']).alreadyMissing,true);
+for(const router of ['bridgeExecute','bridgeExecuteV2']){
+  for(const id of ['outside','parentless','cyclic']){
+    assert.throws(()=>receiptContext[router](expectedCode,'deleteReceiptFile',[id]),/outside the configured receipt folder/);
+  }
+  assert.throws(()=>receiptContext[router](expectedCode,'deleteReceiptFile',['denied']),/Permission denied/);
+  assert.throws(()=>receiptContext[router](expectedCode,'deleteReceiptFile',['unknown']),/File unavailable/);
+  assert.throws(()=>receiptContext[router](expectedCode,'deleteReceiptFile',['trash-error']),/Trash failed/);
+}
+configuredRoot='';
+assert.throws(()=>receiptContext.bridgeExecuteV2(expectedCode,'deleteReceiptFile',['outside']),/receipt folder is not configured/);
+configuredRoot='receipt-root';
+assert.deepEqual(trashCalls,['direct','nested']);
+// Exercise V2 expense deletion and cleanup without real ledger writes. Stub
+// the unchanged legacy ledger operation and its read model, not the guard.
+let currentRow=null;
+let ledgerDeletes=0;
+receiptContext.getSheet_=()=>({
+  getLastRow:()=>currentRow?2:1,
+  getRange(row,col){return col===13?{createTextFinder:()=>({matchEntireCell:()=>({findNext:()=>currentRow?{getRow:()=>2}:null})})}:{getValues:()=>[currentRow]};}
+});
+receiptContext.deleteExpense_=()=>{currentRow=null;ledgerDeletes++;return {ok:true,recent:[],summary:{}};};
+receiptContext.getRecentTransactions_=()=>[];
+receiptContext.getSpendingSummary_=()=>({});
+function deleteFixture(fileId){
+  currentRow=Array(16).fill('');currentRow[14]=fileId;
+  return receiptContext.bridgeExecuteV2(expectedCode,'deleteExpense',['fixture123','2031-05-24']);
+}
+addFile('expense-receipt',[month]);
+assert.equal(deleteFixture('expense-receipt').receiptDeleted,true);
+const blocked=deleteFixture('outside');
+assert.equal(blocked.ok,true);
+assert.equal(blocked.receiptDeleted,false);
+assert.match(blocked.receiptCleanupWarning,/cleanup needs review/);
+assert.equal(deleteFixture('unknown').receiptDeleted,false);
+assert.equal(deleteFixture('').ok,true);
+assert.equal(ledgerDeletes,4);
+assert.deepEqual(trashCalls,['direct','nested','expense-receipt']);
+assert.equal(receiptContext.bridgeExecuteV2(expectedCode,'deleteExpense',['fixture123','2031-05-24']).alreadyDeleted,true);
+console.log('PASS receipt folder scope: both RPC paths, nested receipts, retries, missing configuration, Drive failures, and transaction cleanup isolation');
