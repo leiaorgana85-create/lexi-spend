@@ -1,0 +1,43 @@
+name: Read-only published asset verification
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/verify-live-release-assets.yml'
+permissions:
+  contents: read
+jobs:
+  compare-live-assets:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Fetch published and pinned source assets and compare SHA-256
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import hashlib, urllib.request, urllib.parse, sys
+          owner = 'leiaorgana85-create'
+          releases = [
+            ('lexi-spend', '7bbfdcfae83dd4039203a0959036f2b70297d358',
+              ['v2/index.html','v2/sw.js','v2/api.js','v2/app.js','v2/release.js','index.html','bridge-state.js','version.json']),
+            ('lexi-travel', '688dcc71268fd69cde915769f3531bb4f691215c',
+              ['index.html','sw.js','country-fast.js','version.json'])
+          ]
+          def digest(url):
+              req = urllib.request.Request(url, headers={'User-Agent':'release-parity-check','Cache-Control':'no-cache'})
+              with urllib.request.urlopen(req, timeout=20) as r:
+                  return hashlib.sha256(r.read()).hexdigest()
+          ok = True
+          for repo, sha, files in releases:
+              for path in files:
+                  source = f'https://raw.githubusercontent.com/{owner}/{repo}/{sha}/{path}'
+                  live = f'https://{owner}.github.io/{repo}/{path}?verify={sha}'
+                  try:
+                      expected, actual = digest(source), digest(live)
+                      match = expected == actual
+                      print(f'{repo}/{path} expected={expected} live={actual} {"MATCH" if match else "MISMATCH"}', flush=True)
+                      ok = ok and match
+                  except Exception as exc:
+                      print(f'{repo}/{path}: {exc}', flush=True)
+                      ok = False
+          sys.exit(0 if ok else 1)
+          PY
