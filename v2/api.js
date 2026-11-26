@@ -312,6 +312,35 @@
     return document.body?.dataset?.activeView === 'budget';
   }
 
+  // Use the backend's authoritative stay-month and the same UTC day
+  // arithmetic as Code.gs. Never use a previous stay-month's week.
+  function budgetWeekForDate(summary, today) {
+    const parse = value => {
+      const key = String(value || '');
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(key)) return NaN;
+      const ms = Date.parse(key + 'T00:00:00Z');
+      return Number.isFinite(ms) && new Date(ms).toISOString().slice(0, 10) === key ? ms : NaN;
+    };
+    const start = parse(summary?.periodStart);
+    const end = parse(summary?.periodEnd);
+    const day = parse(today);
+    if (![start, end, day].every(Number.isFinite) || end < start) return null;
+    const current = Math.min(end, Math.max(start, day));
+    const block = Math.floor((current - start) / (7 * 86400000));
+    const first = start + block * 7 * 86400000;
+    const last = Math.min(end, first + 6 * 86400000);
+    return {
+      weekStart: new Date(first).toISOString().slice(0, 10),
+      weekEnd: new Date(last).toISOString().slice(0, 10)
+    };
+  }
+
+  function budgetRequestDate(name, parameters) {
+    if (name === 'logExpense') return parameters?.[0]?.today;
+    if (name === 'deleteExpense') return parameters?.[1];
+    return parameters?.[0];
+  }
+
   async function reconcileWeeklyBudgetSummary(summary, options = {}) {
     if (!summary?.weekStart || !summary?.weekEnd) return summary;
 
@@ -321,7 +350,7 @@
         .map(category => budgetCategoryKey(category.name))
         .filter(Boolean)
     );
-    if (!budgetedCategories.size) return summary;
+    if (!budgetedCategories.size) throw new Error('No budget categories available for weekly reconciliation.');
 
     const months = [...new Set([
       String(summary.weekStart).slice(0, 7),
@@ -333,7 +362,8 @@
     const calendars = await Promise.all(months.map(month => refreshCalendarMonth(month, options)));
     let weeklyTotal = 0;
     for (const calendar of calendars) {
-      for (const [date, day] of Object.entries(calendar?.days || {})) {
+      if (!calendar?.days || typeof calendar.days !== 'object') throw new Error('Calendar data unavailable.');
+      for (const [date, day] of Object.entries(calendar.days)) {
         if (date < summary.weekStart || date > summary.weekEnd) continue;
         for (const transaction of (Array.isArray(day?.transactions) ? day.transactions : [])) {
           if (!budgetedCategories.has(budgetCategoryKey(transaction?.category))) continue;
@@ -348,19 +378,23 @@
     };
   }
 
-  async function reconcileBudgetResult(functionName, result, options = {}) {
+  async function reconcileBudgetResult(functionName, result, options = {}, parameters = []) {
     if (!budgetReconciliationActive() || !result?.summary || !['getAppState', 'logExpense', 'deleteExpense'].includes(functionName)) {
       return result;
     }
+    const original = result.summary;
+    const expected = budgetWeekForDate(original, budgetRequestDate(functionName, parameters));
+    const mismatch = Boolean(expected && (original.weekStart !== expected.weekStart || original.weekEnd !== expected.weekEnd));
+    const summary = mismatch ? { ...original, ...expected, weeklyTotal:null } : original;
     try {
       return {
         ...result,
-        summary: await reconcileWeeklyBudgetSummary(result.summary, options)
+        summary: await reconcileWeeklyBudgetSummary(summary, options)
       };
     } catch (_) {
-      // A Calendar refresh failure must not turn an otherwise successful ledger
-      // read/write into a sync error. Preserve the backend summary as fallback.
-      return result;
+      // Preserve successful ledger reads/writes. A total for the wrong date
+      // range is never presented as the spending for the corrected week.
+      return mismatch ? { ...result, summary } : result;
     }
   }
 
@@ -430,7 +464,7 @@
     }
 
     const result = await callBackend(name, parameters, options);
-    return reconcileBudgetResult(name, result, options);
+    return reconcileBudgetResult(name, result, options, parameters);
   }
 
   function validSavedRate(value) {
@@ -502,7 +536,7 @@
     resetBridge();
     try {
       const result = await callBackend('getAppState', [today, '']);
-      return await reconcileBudgetResult('getAppState', result);
+      return await reconcileBudgetResult('getAppState', result, {}, [today, '']);
     } catch (error) {
       await clearCode();
       throw error;
@@ -527,6 +561,7 @@
     clearCode,
     hasCode,
     warmRate,
+    budgetWeekForDate,
     resetBridge
   });
 })();
