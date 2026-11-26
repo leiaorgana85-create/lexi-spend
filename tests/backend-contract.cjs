@@ -10,7 +10,7 @@ const source = files.map(name => fs.readFileSync(path.join(root, name), 'utf8'))
 const standardGlobals = vm.runInNewContext('Object.getOwnPropertyNames(globalThis)');
 const gasGlobals = ['SpreadsheetApp','PropertiesService','CacheService','LockService',
   'HtmlService','DriveApp','Utilities','Session','UrlFetchApp','Logger','ScriptApp','MimeType',
-  'ContentService','console'];
+  'ContentService','MailApp','console'];
 function unresolved(code) {
   const ast = acorn.parse(code, {ecmaVersion:2022, ranges:true});
   const manager = scope.analyze(ast, {ecmaVersion:2022, sourceType:'script', optimistic:true});
@@ -186,3 +186,73 @@ assert.equal(ledgerDeletes,4);
 assert.deepEqual(trashCalls,['direct','nested','expense-receipt']);
 assert.equal(receiptContext.bridgeExecuteV2(expectedCode,'deleteExpense',['fixture123','2031-05-24']).alreadyDeleted,true);
 console.log('PASS receipt folder scope: both RPC paths, nested receipts, retries, missing configuration, Drive failures, and transaction cleanup isolation');
+
+// Daily health email — actual production functions, only Google services mocked.
+const healthProps=new Map();
+let healthNow=new Date('2031-02-01T01:05:00Z'), healthZone='Asia/Bangkok';
+let healthRows=[['Overview','Value'],['DATA CHECKS',''],['Integrity',0],['Open placeholders (info)',2],['Other check',0],['','']];
+let healthSent=[], healthReads=0, healthReleased=0, healthTriggers=[];
+const healthClock=(now,zone)=>{
+  const parts=new Intl.DateTimeFormat('en-CA',{timeZone:zone,year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',hourCycle:'h23'}).formatToParts(now);
+  const p=Object.fromEntries(parts.map(x=>[x.type,x.value]));
+  return {day:p.year+'-'+p.month+'-'+p.day,hour:Number(p.hour)};
+};
+const healthOverview={getLastRow:()=>healthRows.length,getRange:()=>({getValues:()=>{healthReads++;return healthRows},getDisplayValues:()=>healthRows.map(r=>r.map(String))})};
+const healthContext={
+  console,
+  Date:class extends Date{constructor(...args){super(...(args.length?args:[healthNow.getTime()]));}},
+  Utilities:{formatDate:(now,zone,fmt)=>fmt==='HH'?String(healthClock(now,zone).hour).padStart(2,'0'):healthClock(now,zone).day},
+  PropertiesService:{getScriptProperties:()=>({getProperty:k=>healthProps.get(k)||null,setProperty:(k,v)=>healthProps.set(k,v)})},
+  LockService:{getScriptLock:()=>({tryLock:()=>true,releaseLock:()=>{healthReleased++;}})},
+  Session:{getEffectiveUser:()=>({getEmail:()=> 'owner@example.invalid'})},
+  MailApp:{getRemainingDailyQuota:()=>1,sendEmail:(...args)=>healthSent.push(args)},
+  SpreadsheetApp:{openById:()=>({getSheetByName:n=>n==='FLIGHT_LEGS'?{}:null})},
+  ScriptApp:{getProjectTriggers:()=>healthTriggers,newTrigger:n=>({timeBased:()=>({everyHours:h=>({create:()=>{assert.equal(h,1);healthTriggers.push({getHandlerFunction:()=>n});}})})}),deleteTrigger:t=>{healthTriggers=healthTriggers.filter(x=>x!==t)}}
+};
+vm.createContext(healthContext);vm.runInContext(source,healthContext);
+healthContext.getSpreadsheet_=()=>({getSheetByName:n=>n==='Overview'?healthOverview:null});
+healthContext.healthReadZone_=()=>healthZone;
+const tick=()=>healthContext.lexiSpendHealthEmail_();
+tick();assert.equal(healthReads,1);assert.equal(healthSent.length,0,'Healthy day including info count must not send');
+healthRows[2][1]=4;tick();assert.equal(healthReads,1,'One check per local day');
+healthNow=new Date('2031-02-02T01:07:00Z');tick();tick();
+assert.equal(healthSent.length,1);assert.equal(healthSent[0][0],'owner@example.invalid');assert.equal(healthSent[0][2],'Integrity: 4');
+healthNow=new Date('2031-02-03T00:00:00Z');tick();assert.equal(healthSent.length,1,'Before 08:00 local');
+healthZone='America/Guatemala';healthNow=new Date('2031-02-03T14:10:00Z');healthRows[4][1]='#REF!';tick();
+assert.equal(healthSent.length,2);assert.equal(healthSent[1][2],'Integrity: 4\nOther check: #REF!');
+healthZone='Asia/Bangkok';healthNow=new Date('2031-02-03T01:00:00Z');tick();assert.equal(healthSent.length,2,'Cross-zone same date must not duplicate');
+assert.ok(healthReleased>=6);
+assert.throws(()=>healthContext.healthIssues_([['bad',0]],[['bad','0']]),/missing/);
+assert.throws(()=>healthContext.healthIssues_([['DATA CHECKS',''],['Open placeholders (info)',2]],[['DATA CHECKS',''],['Open placeholders (info)','2']]),/empty/);
+assert.equal(healthContext.healthZoneValid_('Not/AZone'),false);
+const stay=(name,date,zone)=>[name,date,'','','','','','',zone];
+const leg=(id,day,dep,arrday,arr,status,from,to)=>[id,1,'','',day,dep,'',arrday,arr,'','','','',status,from,to];
+const stays=[stay('First','2031-02-01','Asia/Bangkok'),stay('Second','2031-02-10','America/Guatemala')];
+const legs=[leg('fixture-trip','2031-02-10','9:00 AM','2031-02-10','1:00 PM','Booked','Asia/Bangkok','America/Los_Angeles'),leg('fixture-next','2031-02-11','8:00 AM','2031-02-11','2:00 PM','Booked','America/Los_Angeles','America/Guatemala')];
+const stamps={'2031-02-10 9:00 AM':Date.parse('2031-02-10T02:00:00Z'),'2031-02-10 1:00 PM':Date.parse('2031-02-10T21:00:00Z'),'2031-02-11 8:00 AM':Date.parse('2031-02-11T16:00:00Z'),'2031-02-11 2:00 PM':Date.parse('2031-02-11T20:00:00Z')};
+const zoneAt=(iso,l=legs)=>healthContext.healthSelectZone_(new Date(iso),stays,l,'Asia/Bangkok',healthClock,(d,t)=>stamps[d+' '+t]);
+assert.equal(zoneAt('2031-02-10T03:00:00Z'),'Asia/Bangkok');
+assert.equal(zoneAt('2031-02-10T22:00:00Z'),'America/Los_Angeles');
+assert.equal(zoneAt('2031-02-11T19:00:00Z'),'America/Los_Angeles');
+assert.equal(zoneAt('2031-02-11T21:00:00Z'),'America/Guatemala');
+assert.equal(zoneAt('2031-02-12T14:00:00Z',[]),'America/Guatemala');
+assert.throws(()=>healthContext.installLexiSpendHealthEmail_(),/Travel sheet ID/);
+healthProps.set('LEXI_SPEND_HEALTH_TRAVEL_ID','synthetic-private-id');
+healthContext.installLexiSpendHealthEmail_();healthContext.installLexiSpendHealthEmail_();
+assert.equal(healthTriggers.length,1,'Installation idempotent');
+assert.equal(healthSent.length,2,'Installation must send no email');
+console.log('PASS health email: local morning, transit zones, daily dedupe, zero/info silence, issues and errors, owner-only recipient, idempotent install.');
+
+// The live Overview gained two post-cutoff checks. The generic reader
+// must include appended labels, report both values, and stay silent at zero.
+healthRows.splice(healthRows.length-1,0,['Non-standard FX source',3],['Possible duplicate transactions',4]);
+healthRows[2][1]=0;healthRows[4][1]=0;
+healthNow=new Date('2031-02-04T01:10:00Z');
+tick();tick();
+assert.equal(healthSent.length,3);
+assert.equal(healthSent[2][2],'Non-standard FX source: 3\nPossible duplicate transactions: 4');
+healthRows[healthRows.length-3][1]=0;healthRows[healthRows.length-2][1]=0;
+healthNow=new Date('2031-02-05T01:10:00Z');tick();
+assert.equal(healthSent.length,3,'Both new checks zero: no email');
+console.log('PASS health email includes both newly appended Overview checks and suppresses zero values.');
+

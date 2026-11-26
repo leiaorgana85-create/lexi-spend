@@ -3746,3 +3746,140 @@ function doPost(e) {
       );
   }
 }
+
+// Private, owner-installed exception-only daily health check. Not an RPC action.
+const HEALTH_TRAVEL_ID_PROPERTY_ = 'LEXI_SPEND_HEALTH_TRAVEL_ID';
+const HEALTH_DAYS_PROPERTY_ = 'LEXI_SPEND_HEALTH_CHECKED_DAYS';
+const HEALTH_HANDLER_ = 'lexiSpendHealthEmail_';
+
+function healthZoneValid_(zone) {
+  try {
+    return typeof zone === 'string' && zone !== '' &&
+      Boolean(new Intl.DateTimeFormat('en-US', {timeZone:zone}).resolvedOptions().timeZone);
+  } catch (_) { return false; }
+}
+
+function healthLocalClock_(now, zone) {
+  if (!healthZoneValid_(zone)) throw new Error('Invalid health-check timezone.');
+  return {
+    day:Utilities.formatDate(now, zone, 'yyyy-MM-dd'),
+    hour:Number(Utilities.formatDate(now, zone, 'HH'))
+  };
+}
+
+function healthTimestamp_(date, time, zone) {
+  if (!healthZoneValid_(zone) || !/^\d{4}-\d{2}-\d{2}$/.test(date) ||
+      !/^\d{1,2}:\d{2}\s(?:AM|PM)$/i.test(time)) throw new Error('Invalid flight clock.');
+  const text = date + ' ' + time.toUpperCase();
+  const value = Utilities.parseDate(text, zone, 'yyyy-MM-dd h:mm a');
+  if (Utilities.formatDate(value, zone, 'yyyy-MM-dd h:mm a') !== text.replace(/ 0(\d:)/,' $1')) {
+    throw new Error('Invalid flight timestamp.');
+  }
+  return value.getTime();
+}
+
+function healthSelectZone_(now, stays, legs, fallback, clock, stamp) {
+  // Stay table is the accounting fallback; each candidate is tested in its own zone.
+  const valid = stays.filter(r => r[0] && /^\d{4}-\d{2}-\d{2}$/.test(r[1]) && healthZoneValid_(r[8]))
+    .sort((a,b) => a[1].localeCompare(b[1]));
+  const selected = valid.filter(r => clock(now,r[8]).day >= r[1]).pop();
+  let zone = selected ? selected[8] : fallback;
+  const boundary = selected ? selected[1] : '';
+  if (!healthZoneValid_(zone)) throw new Error('No valid health-check timezone.');
+  // A linked trip may arrive in a transit timezone before the accounting stay
+  // physically starts. Use only booked/confirmed legs, not cancelled plans.
+  const booked = new Set(legs.filter(r => r[0] && /^(booked|confirmed)$/i.test(String(r[13]).trim())).map(r=>r[0]));
+  let latest = null;
+  for (const r of legs) {
+    if (!booked.has(r[0])) continue;
+    const dep = stamp(r[4],r[5],r[14]), arr = stamp(r[7],r[8],r[15]);
+    if (!(arr > dep)) throw new Error('Invalid flight interval.');
+    if (dep <= now.getTime() && (!boundary || r[4] >= boundary) &&
+        (!latest || dep > latest.dep)) latest = {dep,arr,from:r[14],to:r[15]};
+  }
+  if (latest) zone = now.getTime() < latest.arr ? latest.from : latest.to;
+  return zone;
+}
+
+function healthReadZone_(ss, props, now) {
+  const staysSheet = ss.getSheetByName(STAYS_SHEET_NAME);
+  if (!staysSheet) throw new Error('Stays sheet unavailable.');
+  const rows = staysSheet.getRange('A1:I15').getDisplayValues();
+  if (rows[0][0] !== 'Stay' || rows[0][8] !== 'Accounting timezone') throw new Error('Stay timezone schema changed.');
+  const stays = rows.slice(1);
+  const fallback = ss.getSpreadsheetTimeZone();
+  // The travel ID is a private Script Property, never a repository constant.
+  try {
+    const travelId = props.getProperty(HEALTH_TRAVEL_ID_PROPERTY_);
+    if (!travelId) throw new Error('Travel source not configured.');
+    const sh = SpreadsheetApp.openById(travelId).getSheetByName('FLIGHT_LEGS');
+    if (!sh) throw new Error('Flight source unavailable.');
+    const legs = sh.getRange(1,1,Math.max(1,sh.getLastRow()),16).getDisplayValues();
+    if (legs[0][0] !== 'Event ID' || legs[0][14] !== 'From TZ' || legs[0][15] !== 'To TZ') throw new Error('Flight schema changed.');
+    return healthSelectZone_(now,stays,legs.slice(1),fallback,healthLocalClock_,healthTimestamp_);
+  } catch (_) {
+    // Same source hierarchy as the accounting resolver; no credentials or
+    // provider errors printed. Overview reports its own source-health check.
+    return healthSelectZone_(now,stays,[],fallback,healthLocalClock_,healthTimestamp_);
+  }
+}
+
+function healthIssues_(rows, displayed) {
+  const index = rows.findIndex(r=>String(r[0]).trim()==='DATA CHECKS');
+  if (index < 0) throw new Error('Overview DATA CHECKS section missing.');
+  const issues=[];
+  let checked=0;
+  for(let i=index+1;i<rows.length;i++) {
+    const label=String(rows[i][0]||'').trim();
+    if (!label) break;
+    // Informational counts are not health checks (e.g. approved placeholders).
+    if (/\(info\)\s*$/i.test(label)) continue;
+    checked++;
+    const value=rows[i][1];
+    if (typeof value !== 'number' || !Number.isFinite(value)) {
+      issues.push({label,value:String(displayed[i][1]||'Unavailable')});
+    } else if (value !== 0) issues.push({label,value:String(value)});
+  }
+  if (!checked) throw new Error('Overview DATA CHECKS section empty.');
+  return issues;
+}
+
+function installLexiSpendHealthEmail_() {
+  // Run once as owner, after the automatic release is accepted.
+  const props=PropertiesService.getScriptProperties();
+  const travelId=props.getProperty(HEALTH_TRAVEL_ID_PROPERTY_);
+  if (!travelId || !SpreadsheetApp.openById(travelId).getSheetByName('FLIGHT_LEGS')) throw new Error('Configure the private Travel sheet ID first.');
+  if (!Session.getEffectiveUser().getEmail()) throw new Error('Owner email unavailable.');
+  MailApp.getRemainingDailyQuota(); // Requests send-mail authorization without sending.
+  const triggers=ScriptApp.getProjectTriggers().filter(t=>t.getHandlerFunction()===HEALTH_HANDLER_);
+  if(!triggers.length) ScriptApp.newTrigger(HEALTH_HANDLER_).timeBased().everyHours(1).create();
+  else triggers.slice(1).forEach(t=>ScriptApp.deleteTrigger(t));
+}
+
+function lexiSpendHealthEmail_() {
+  const lock=LockService.getScriptLock();
+  if(!lock.tryLock(30000)) return;
+  try {
+    const props=PropertiesService.getScriptProperties(), ss=getSpreadsheet_(), now=new Date();
+    const local=healthLocalClock_(now,healthReadZone_(ss,props,now));
+    // At most one check per local calendar day; hourly trigger tolerates
+    // scheduler jitter and shifts in timezone without reinstalling triggers.
+    if(local.hour<8 || local.hour>=12) return;
+    const days=JSON.parse(props.getProperty(HEALTH_DAYS_PROPERTY_)||'[]');
+    if(!Array.isArray(days)) throw new Error('Invalid health-check state.');
+    if(days.includes(local.day)) return;
+    const overview=ss.getSheetByName('Overview');
+    if(!overview) throw new Error('Overview sheet unavailable.');
+    const range=overview.getRange(1,1,Math.max(1,overview.getLastRow()),2);
+    const issues=healthIssues_(range.getValues(),range.getDisplayValues());
+    const email=Session.getEffectiveUser().getEmail();
+    if(issues.length && (!email || MailApp.getRemainingDailyQuota()<1)) throw new Error('Health email authorization or quota unavailable.');
+    // Claim the date before send: if send fails ambiguously, do not risk
+    // a duplicate. Apps Script reports trigger failures to the trigger owner.
+    props.setProperty(HEALTH_DAYS_PROPERTY_,JSON.stringify([...days.slice(-30),local.day]));
+    if(!issues.length) return;
+    MailApp.sendEmail(email,'LEXI Spend: Overview data check issues ('+local.day+')',
+      issues.map(x=>x.label+': '+x.value).join('\n'));
+  } finally { lock.releaseLock(); }
+}
+
